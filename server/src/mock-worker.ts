@@ -1,20 +1,14 @@
 import type { Pool } from 'pg';
+import { withDatabaseRole } from './database.js';
 import { executeMockWorkflow } from './mock-execution.js';
 
 export async function dispatchNextMockRun(pool: Pool) {
-  const client = await pool.connect();
-  let discard = false;
-  try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL ROLE runspell_mock_worker');
+  return withDatabaseRole(pool, 'runspell_mock_worker', async (client) => {
     const claimed = await client.query<{ id: string; definition: unknown }>(
       'SELECT id, definition FROM runspell.claim_mock_run()',
     );
     const run = claimed.rows[0];
-    if (!run) {
-      await client.query('COMMIT');
-      return null;
-    }
+    if (!run) return null;
 
     let status: 'succeeded' | 'failed' = 'succeeded';
     let result: ReturnType<typeof executeMockWorkflow> | { evidence: 'simulated'; code: string };
@@ -29,16 +23,6 @@ export async function dispatchNextMockRun(pool: Pool) {
       'SELECT runspell.finish_mock_run($1, $2, $3) AS done', [run.id, status, result],
     );
     if (!finished.rows[0]?.done) throw new Error('Mock run was not finalized');
-    await client.query('COMMIT');
     return { id: run.id, status };
-  } catch (error) {
-    try {
-      await client.query('ROLLBACK');
-    } catch {
-      discard = true;
-    }
-    throw error;
-  } finally {
-    client.release(discard);
-  }
+  });
 }

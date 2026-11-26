@@ -228,13 +228,14 @@ For each implemented slice:
 | M3 planning API and Gemini adapter | Implemented locally | Inactive drafts, reviewable revision proposals, durable outcomes, scoped event replay, and workspace quotas. Live Gemini and browser integration remain pending |
 | M4 local manual mock execution | Implemented locally | Explicit activation, immutable version pinning, idempotent acceptance, transactional outbox dispatch, and receipts built from simulated steps |
 | M5 Flight Recorder for mock runs | Implemented locally | Authorized timelines and JSON receipts preserve the pinned version and identify simulated outcomes. The workspace preview opens receipt files locally |
-| Remaining M2 and M4–M9 | Planned | Managed identity, live activation, connection storage, provider execution, schedules, webhook starts, and launch readiness |
+| M2 identity and M5 run-history APIs | Implemented locally | Configured OIDC token verification, isolated identity lookup, membership discovery, and workspace-scoped run pagination |
+| Remaining M2 and M4–M9 | Planned | Hosted sign-in setup, live activation, connection storage, provider execution, schedules, webhook starts, and launch readiness |
 
-Local verification on 26 November 2026 passed type checking, 32 TypeScript unit tests, PostgreSQL integration through the mock prompt-to-receipt flow, 4 Python frontend checks, and 10 Playwright tests. The frontend build passed with upstream React Flow and React compiler directive warnings. The live provider gate remains pending.
+Local backend verification on 26 November 2026 passed type checking, 35 TypeScript unit tests, PostgreSQL integration for mock execution and signed-identity run history, and a loopback API startup check. The latest frontend verification passed 4 Python checks, 10 Playwright tests, and the build with upstream React Flow and React compiler directive warnings. The live provider gate remains pending.
 
 ## 9. Next work
 
-1. Continue M2 with managed identity, connection storage, and live workflow activation. Select the identity and storage providers before wiring their services.
+1. Configure the selected managed identity provider and implement connection storage and live workflow activation.
 2. Resume the M0 live spike after approval of the portal, test accounts, and spending limit. Record actual session, cleanup, access, and usage results before closing feasibility.
 3. Qualify M3 with a live synthetic Gemini check and the representative prompt suite. Connect Prompt Studio to authenticated API events and verify recovery when the original generation response is interrupted.
 4. Continue M4 with live execution prerequisites and verify the chosen portal and API integration after the live provider gate.

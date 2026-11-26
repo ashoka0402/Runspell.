@@ -64,3 +64,7 @@ The API reads these options from its Node environment. A server process can load
 ## M5 Flight Recorder
 
 In the local workspace, open **Runs → Flight Recorder** at `/app/#/runs/recorder`. Use **Open receipt** to inspect a JSON file downloaded from the authorized `/api/v1/workspaces/:wid/runs/:id/receipt` endpoint. The recorder displays the pinned version, outcome, and timeline in that browser tab. Mock receipts show simulated evidence. See the [backend plan](BACKEND_PLAN.md#10-http-api-surface) for the receipt format and access requirements.
+
+## Local API with managed identity
+
+Set the database and OIDC options from `.env.example` in the private `.env`, then run `npm run api:local`. It listens on `127.0.0.1:8002`. The API accepts short-lived RS256 access tokens with type `at+jwt`, the configured issuer and audience, and a subject already provisioned in Runspell. The development database needs separate runtime and identity-lookup logins. See the [backend plan](BACKEND_PLAN.md#15-development-deployment-and-recovery) for role setup. `npm run test:db` verifies the routes with local signing keys.

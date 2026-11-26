@@ -46,14 +46,18 @@ try {
     '-c', 'CREATE ROLE runspell_mock_worker NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS',
     '-c', 'CREATE ROLE runspell_test_mock_worker LOGIN NOINHERIT',
     '-c', 'GRANT runspell_mock_worker TO runspell_test_mock_worker',
+    '-c', 'CREATE ROLE runspell_identity_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS',
+    '-c', 'CREATE ROLE runspell_test_identity LOGIN NOINHERIT',
+    '-c', 'GRANT runspell_identity_lookup TO runspell_test_identity',
     '-f', 'server/migrations/001_workspace_workflows.sql',
     '-f', 'server/migrations/002_workflow_ids.sql',
     '-f', 'server/migrations/003_ai_generations.sql',
     '-f', 'server/migrations/004_mock_run_admission.sql',
     '-f', 'server/migrations/005_mock_dispatch.sql',
+    '-f', 'server/migrations/006_identity_lookup.sql',
     '-f', 'server/tests/workspace-isolation.sql',
   ]);
-  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts', 'server/tests/planner-api.test.ts', 'server/tests/run-admission.test.ts'], {
+  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts', 'server/tests/planner-api.test.ts', 'server/tests/run-admission.test.ts', 'server/tests/run-history.test.ts'], {
     ...postgresEnv, RUNSPELL_TEST_PG_PORT: String(port),
   });
 } finally {

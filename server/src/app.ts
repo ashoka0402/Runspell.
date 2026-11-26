@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { CompilePolicySchema, compileWorkflow, ContractError, WorkflowSchema, type Workflow } from '../../shared/index.js';
 import { geminiFromEnv, type PlannerProvider, type PlannerResult } from './gemini.js';
 import { buildMockReceipt } from './flight-recorder.js';
+import { withDatabaseRole } from './database.js';
 import { definitionSchema, plannerInput, plannerOutput, promptSchema, restoreUnchangedValues, revisionSchema } from './planner.js';
 
 const uuid = z.uuid().transform((id) => id.toLowerCase());
@@ -22,8 +23,13 @@ const applyBody = z.strictObject({ generationId: uuid });
 const mockBody = z.strictObject({ mode: z.literal('mock') });
 const activateBody = mockBody.extend({ expectedRevision: revisionSchema });
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/);
-const runRoute = '/api/v1/workspaces/:wid/runs/:runId';
+const runCollection = '/api/v1/workspaces/:wid/runs';
+const runRoute = `${runCollection}/:runId`;
 const runPath = workspacePath.extend({ runId: uuid });
+const runListQuery = listQuery.extend({
+  status: z.enum(['accepted', 'succeeded', 'failed']).optional(),
+  limit: z.string().regex(/^(?:[1-9]|[1-4][0-9]|50)$/).transform(Number).optional(),
+});
 const generationWindow = "interval '2 minutes'";
 const pageSize = 50;
 const summaryColumns = 'id, workspace_id AS "workspaceId", name, draft_revision AS revision';
@@ -32,7 +38,7 @@ const columns = `${summaryColumns}, draft_definition AS definition`;
 type DraftSummary = { id: string; workspaceId: string; name: string; revision: number };
 type Draft = DraftSummary & { definition: Workflow };
 type MockVersion = { id: string; versionNumber: number; draftRevision: number };
-type MockRun = {
+type RunSummary = {
   id: string;
   workflowId: string;
   workflowVersionId: string;
@@ -40,8 +46,10 @@ type MockRun = {
   mode: 'mock';
   createdAt: Date;
   finishedAt: Date | null;
-  result: unknown;
 };
+type MockRun = RunSummary & { result: unknown };
+const runColumns = `r.id, r.workflow_id AS "workflowId", r.workflow_version_id AS "workflowVersionId",
+  r.status, r.mode, r.created_at AS "createdAt", r.finished_at AS "finishedAt"`;
 type Proposal = { workflowId: string; expectedRevision: number; definition: Workflow };
 type Outcome = (
   { status: 'ready'; assumptions: string[]; connectionRequirements: ReturnType<typeof compileWorkflow>['connectionRequirements'] }
@@ -104,30 +112,21 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
     return reply.code(500).send({ code: 'INTERNAL_ERROR' });
   });
 
-  async function inWorkspace<T>(
-    request: FastifyRequest, workspaceId: string, write: boolean, work: (client: PoolClient, actor: string) => Promise<T>,
-  ): Promise<T> {
+  async function asActor<T>(request: FastifyRequest, work: (client: PoolClient, actor: string) => Promise<T>) {
     const actor = parse(uuid, await authenticate(request), 401, 'UNAUTHENTICATED');
-    const client = await pool.connect();
-    let discard = false;
-    try {
-      await client.query('BEGIN');
-      await client.query('SET LOCAL ROLE runspell_runtime');
+    return withDatabaseRole(pool, 'runspell_runtime', async (client) => {
       await client.query("SELECT set_config('runspell.user_id', $1, true)", [actor]);
+      return work(client, actor);
+    });
+  }
+
+  function inWorkspace<T>(
+    request: FastifyRequest, workspaceId: string, write: boolean, work: (client: PoolClient, actor: string) => Promise<T>,
+  ) {
+    return asActor(request, async (client, actor) => {
       await requireWorkspace(client, workspaceId, write);
-      const result = await work(client, actor);
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      try {
-        await client.query('ROLLBACK');
-      } catch {
-        discard = true;
-      }
-      throw error;
-    } finally {
-      client.release(discard);
-    }
+      return work(client, actor);
+    });
   }
 
   function validateDefinition(definition: z.infer<typeof definitionSchema>, workspaceId: string, id: string) {
@@ -177,13 +176,24 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
 
   async function readRun(client: PoolClient, workspaceId: string, id: string) {
     const result = await client.query<MockRun>(
-      `SELECT id, workflow_id AS "workflowId", workflow_version_id AS "workflowVersionId",
-        status, mode, created_at AS "createdAt", finished_at AS "finishedAt", result
-       FROM runspell.runs WHERE workspace_id = $1 AND id = $2`, [workspaceId, id],
+      `SELECT ${runColumns}, r.result FROM runspell.runs AS r
+       WHERE r.workspace_id = $1 AND r.id = $2`, [workspaceId, id],
     );
     if (!result.rows[0]) throw new ApiError(404, 'RUN_NOT_FOUND');
     return result.rows[0];
   }
+
+  app.get('/api/v1/me', (request, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    return asActor(request, async (client, actor) => {
+      const result = await client.query<{ id: string; name: string; role: string }>(
+        `SELECT w.id, w.name, m.role FROM runspell.workspace_members AS m
+         JOIN runspell.workspaces AS w ON w.id = m.workspace_id
+         WHERE m.user_id = $1 ORDER BY w.name, w.id`, [actor],
+      );
+      return { id: actor, workspaces: result.rows };
+    });
+  });
 
   app.get(route, async (request) => {
     const { wid } = parse(workspacePath, request.params, 400, 'INVALID_PATH');
@@ -259,8 +269,30 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
     return reply.code(run.status === 'accepted' ? 202 : 200).send(run);
   });
 
-  app.get(runRoute, async (request) => {
+  app.get(runCollection, async (request, reply) => {
+    const { wid } = parse(workspacePath, request.params, 400, 'INVALID_PATH');
+    const { after, status, limit = 25 } = parse(runListQuery, request.query, 400, 'INVALID_RUN_FILTER');
+    reply.header('Cache-Control', 'private, no-store');
+    return inWorkspace(request, wid, false, async (client) => {
+      const result = await client.query<RunSummary>(
+        `SELECT ${runColumns} FROM runspell.runs AS r
+         WHERE r.workspace_id = $1 AND ($3::text IS NULL OR r.status = $3)
+           AND ($2::uuid IS NULL OR EXISTS (
+             SELECT 1 FROM runspell.runs AS anchor
+             WHERE anchor.workspace_id = $1 AND anchor.id = $2
+               AND (r.created_at < anchor.created_at OR (r.created_at = anchor.created_at AND r.id > anchor.id))
+           ))
+         ORDER BY r.created_at DESC, r.id LIMIT $4`,
+        [wid, after ?? null, status ?? null, limit + 1],
+      );
+      const runs = result.rows.slice(0, limit);
+      return { runs, nextCursor: result.rows.length > limit ? runs[runs.length - 1].id : null };
+    });
+  });
+
+  app.get(runRoute, async (request, reply) => {
     const { wid, runId } = parse(runPath, request.params, 400, 'INVALID_PATH');
+    reply.header('Cache-Control', 'private, no-store');
     return inWorkspace(request, wid, false, (client) => readRun(client, wid, runId));
   });
 
