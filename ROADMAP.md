@@ -21,7 +21,7 @@ The existing integrated landing page and workspace are the starting frontend. Th
 | --- | --- |
 | Integration preference | Official APIs for supported actions; webhooks for available events; browser actions when the required API capability is unavailable |
 | Workflow model | One engine with manual, scheduled, and event starts; a workflow may have multiple trigger bindings; each run has one initiating source |
-| Backend | TypeScript/Fastify, PostgreSQL, Clerk or the existing managed identity provider, and private object storage |
+| Backend | TypeScript/Fastify, PostgreSQL, Clerk sign-in, and private object storage. Use local infrastructure for development |
 | Frontend | Keep the static shell and isolated React/TypeScript editor. Evaluate Next.js when a product requirement justifies migration |
 | Optional integrations | Assess Stagehand for bounded browser actions, Resend for email, Liveblocks for collaboration, and Framer Motion for unmet motion requirements |
 | Execution | Trigger.dev orchestrates; Steel provides browsers; Playwright controls supported browser actions |
@@ -192,12 +192,13 @@ Prioritize expansion by demonstrated demand after M5. The experimental concepts 
 
 | Decision | Needed by | Work that can proceed meanwhile |
 | --- | --- | --- |
-| First portal, one exact task, expected result, read/write boundaries | M0 live spike and M4 | Schemas, mocked canvas, API boundaries |
+| First browser provider smoke test | M0 live spike | Public demo table, read the sample Doe row amount only, expect $100.00, and record the result in Runspell |
+| First authenticated portal and exact task | M4 | The public read-only smoke does not exercise login, profile reuse, or state-changing actions |
 | First API/event integration and account permissions | M4 | Generic trigger/action contracts and fixtures |
 | Gemini model, data policy, and usage limits | M3 | Fixture generation, adapter interface, compiler and canvas |
-| Identity, database, object storage, API host and region | M2 service integration; deployment later | Data model, local tests, authorization contract |
+| Clerk development instance and test user | M2 service integration | Local PostgreSQL and a signed-session verifier; production hosting is deferred |
 | Provider access and permitted test spend | Live M0 spike, M3/M4 | All clearly labelled offline/mocked checks |
-| Expected concurrency, frequency, retention, reviewers and budget | Live testing and M5 | Configurable bounded policies with conservative test defaults |
+| Expected concurrency, frequency, and budget | Live testing and M5 | Local first. Signed-in workspace members may approve runs and view results. Run history and evidence have a 30-day retention target |
 | Runspell name review | Public launch | Private development and controlled testing |
 
 No credentials or vendor accounts have been configured by creating this roadmap. An unanswered decision blocks only the work that depends on it.
@@ -231,14 +232,16 @@ For each implemented slice:
 | M2 identity and M5 run-history APIs | Implemented locally | Configured OIDC token verification, isolated identity lookup, membership discovery, and workspace-scoped run pagination |
 | M2 connection records and M5 validation mode | Implemented locally | Workspace-scoped pending/revoked metadata and revision-checked draft validation without dispatch |
 | M3 interrupted planning recovery | Implemented locally | Caller-supplied request UUIDs recover durable outcomes and prevent duplicate provider calls during retries |
+| M3 live synthetic Gemini smoke | Verified | One approved mock-data prompt returned a valid navigation draft with 1,909 reported tokens |
+| Local PostgreSQL and Clerk run history | Implemented locally | Isolated database with separate roles, signed Clerk-token checks, and browser integration. A development Publishable Key and test user are still needed for live sign-in |
 | Remaining M2–M9 | Planned | Hosted sign-in, credential attachment and verification, live activation and execution, schedules, webhook starts, and launch readiness |
 
-Local backend verification on 27 November 2026 passed type checking, 35 TypeScript unit tests, and 6 PostgreSQL integration tests covering mock execution, signed-identity run history, connection metadata, validation, and planning recovery. The previous loopback API startup and frontend checks passed. The live provider gate remains pending.
+Local verification on 27 November 2026 passed type checking, 40 TypeScript unit tests, 6 PostgreSQL integration tests, 11 Playwright tests, and the frontend build. The local PostgreSQL bootstrap was run twice and all three restricted logins were verified. The public demo amount was verified in local Chrome. The Trigger.dev and Steel provider gate still requires development credentials.
 
 ## 9. Next work
 
-1. Configure the selected managed identity provider and implement credential attachment, connection verification, and live workflow activation.
+1. Link the first Clerk development user, then implement credential attachment, connection verification, and live workflow activation.
 2. Resume the M0 live spike after approval of the portal, test accounts, and spending limit. Record actual session, cleanup, access, and usage results before closing feasibility.
-3. Qualify M3 with a live synthetic Gemini check and the representative prompt suite. Connect Prompt Studio to authenticated API events and use its request UUIDs to resume interrupted responses in the browser.
+3. Run the approved representative Gemini prompt suite. Connect Prompt Studio to authenticated API events and use its request UUIDs to resume interrupted responses in the browser.
 4. Continue M4 with live execution prerequisites and verify the chosen portal and API integration after the live provider gate.
 5. Continue M5 by connecting Flight Recorder to authorized run history and verifying the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.

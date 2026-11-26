@@ -41,7 +41,7 @@ Keep the static frontend and isolated React/TypeScript editor while adding API c
 | Orchestration | Trigger.dev Cloud | Durable tasks, schedules, retries, concurrency limits, waiting for decisions |
 | Browser infrastructure | Steel Cloud | Remote browser sessions and saved browser profiles |
 | Browser control | Playwright | Execute supported browser actions through Steel's CDP connection |
-| Identity | Clerk or the existing managed authentication provider | User sign-in and identity verification, validated before service integration |
+| Identity | Clerk for local development | User sign-in and signed session verification |
 | AI authoring | Gemini via a provider-neutral adapter | M3 structured draft generation and reviewable conversational edits |
 | File storage | Private S3-compatible object storage | Downloaded files, screenshots, and retained artifacts |
 | Validation | Fastify route schemas and shared workflow schemas | Reject invalid requests and unsupported workflow definitions |
@@ -274,7 +274,8 @@ Gemini is opt-in and authoring-only. One workspace can have one active planning 
 ## 11. Identity, credentials, and security
 
 - Integrate managed authentication rather than implementing password storage. Verify issuer, audience, signature, expiry, and workspace membership on the server.
-- Start with owner/admin, editor, and viewer roles. Approval policies specify permitted reviewers; sensitive actions can require a reviewer other than the requester.
+- Keep owner/admin, editor, and viewer roles for separation of duties. For the initial workflow, any signed-in member of its workspace can approve runs and view results.
+- Retain run history and evidence for 30 days. Verify expiry and cleanup before launch.
 - Prefer a same-origin API and secure HTTP-only session cookies. Apply CSRF protection to state-changing cookie-authenticated requests and use restrictive CORS.
 - Store platform API keys in the deployment secret manager. Store customer credentials using managed secret references or authenticated encryption with externally managed, rotatable keys. Never expose secret values through connection reads.
 - For OAuth connectors, validate state, use PKCE where applicable, request limited scopes, refresh tokens safely, and support revocation. Never share one customer's tokens/profile with another.
@@ -362,7 +363,7 @@ Run the API locally alongside the current static frontend, using a development p
 
 The [migrations](server/migrations/) create users, workspaces, memberships, workflow drafts, and stored versions. Before applying them, a database administrator provisions `runspell_runtime` as a dedicated `NOLOGIN`, `NOBYPASSRLS` role without administrative privileges or table ownership. Apply migrations as a separate schema owner. The API pool uses a dedicated database login that can assume the runtime role for workspace queries.
 
-The managed identity adapter verifies signed RS256 bearer access tokens of type `at+jwt` against a configured HTTPS issuer, JWKS URL, and dedicated API audience. It requires issued-at, expiration, and subject claims and caps lifetime at 15 minutes. Provision `runspell_identity_lookup` as a dedicated `NOLOGIN`, `NOBYPASSRLS` role before migration 006. Give its separate login only the ability to assume that role. The runtime and worker logins keep their own role grants. Provision the verified issuer and subject in `users` and grant workspace memberships explicitly. The app uses the mapped actor UUID and runtime role on the same transaction and connection. Row-level security lets members read their workspaces and lets owners, admins, and editors write drafts. The runtime role cannot change memberships, move workflows between workspaces, or write stored versions.
+The local Clerk adapter verifies v2 session JWTs using the development instance's public JWKS, signature, issuer, session claims, and approved local page origins. The generic OIDC adapter remains available for signed RS256 bearer access tokens of type `at+jwt`. Provision `runspell_identity_lookup` as a dedicated `NOLOGIN`, `NOBYPASSRLS` role before migration 006. Give its separate login only the ability to assume that role. The runtime and worker logins keep their own role grants. The local bootstrap applies migrations and provisions separate logins. Enroll Clerk subjects explicitly in the local workspace. The app uses the mapped actor UUID and runtime role on the same transaction and connection. Row-level security lets members read their workspaces and lets owners, admins, and editors write drafts. The runtime role cannot change memberships, move workflows between workspaces, or write stored versions.
 
 Draft writes use the shared validator and an atomic revision check. Activation will require a separate server-controlled write path. `npm run test:db` exercises the migration, policies, and draft routes against disposable PostgreSQL.
 

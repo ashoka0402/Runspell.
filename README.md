@@ -65,6 +65,19 @@ The API reads these options from its Node environment. A server process can load
 
 In the local workspace, open **Runs → Flight Recorder** at `/app/#/runs/recorder`. Use **Open receipt** to inspect a JSON file downloaded from the authorized `/api/v1/workspaces/:wid/runs/:id/receipt` endpoint. The recorder displays the pinned version, outcome, and timeline in that browser tab. Mock receipts show simulated evidence. See the [backend plan](BACKEND_PLAN.md#10-http-api-surface) for the receipt format and access requirements.
 
-## Local API with managed identity
+## Local PostgreSQL and Clerk
 
-Set the database and OIDC options from `.env.example` in the private `.env`, then run `npm run api:local`. It listens on `127.0.0.1:8002`. The API accepts short-lived RS256 access tokens with type `at+jwt`, the configured issuer and audience, and a subject already provisioned in Runspell. The development database needs separate runtime and identity-lookup logins. See the [backend plan](BACKEND_PLAN.md#15-development-deployment-and-recovery) for role setup. `npm run test:db` verifies the routes with local signing keys.
+`npm run db:local` provisions the isolated local PostgreSQL database on `127.0.0.1:55432`, applies migrations, and adds the generated connection settings to the ignored `.env`. Rerun it after pulling new migrations. The database setup uses the PostgreSQL binaries on PATH and preserves existing local records.
+
+For Clerk, add the development Publishable Key (`pk_test_…`) as `CLERK_PUBLISHABLE_KEY` and a test user's Clerk ID as `RUNSPELL_CLERK_SUBJECT`. Then run `npm run db:local -- --enroll-clerk` to link the user explicitly to **Local Runspell**. This uses Clerk's public signing keys. [Clerk API keys](https://dashboard.clerk.com/) · [Clerk JavaScript setup](https://clerk.com/docs/js-frontend/getting-started/quickstart)
+
+Start the API with `npm run api:local` and open **Runs → Flight Recorder** through the local preview on port 8000. The API listens on `127.0.0.1:8002`. The Clerk history panel sends a short-lived Clerk session token to that API for authenticated reads. The OIDC bearer configuration in `.env.example` remains available for non-Clerk development.
+
+## Live browser smoke test credentials
+
+Use the ignored root `.env` for the following development values.
+
+- `TRIGGER_PROJECT_REF` holds the Trigger.dev development project reference (`proj_…`). `TRIGGER_SECRET_KEY` holds its development key. [Trigger.dev manual setup](https://trigger.dev/docs/manual-setup)
+- `STEEL_API_KEY` holds a key from your Steel test account. [Steel setup](https://steel.dev/docs/get-started/code)
+
+The chosen test is a read of the sample `$100.00` due amount from the Doe row of the public demo table, with the result recorded in a Runspell receipt. No portal sign-in is needed for this smoke test. The cloud browser session and Trigger.dev task still require the development credentials and an approved spend limit. [Demo table](https://the-internet.herokuapp.com/tables)

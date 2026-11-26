@@ -9,7 +9,7 @@ function flightRecorderPage() {
     </div>
     <p role="status" class="recorder-status"></p>
     <div class="recorder-result" hidden></div>
-  </section>`;
+  </section>${clerkHistoryPage()}`;
 }
 
 function isFlightReceipt(receipt) {
@@ -70,7 +70,7 @@ function showFlightReceipt(container, receipt) {
   }
 
   const heading = element('h3', 'Run timeline');
-  heading.id = 'flight-timeline-heading';
+  heading.id = container.id ? `${container.id}-timeline` : 'flight-timeline-heading';
   const timeline = element('ol');
   timeline.setAttribute('aria-labelledby', heading.id);
   for (const entry of receipt.timeline) {
@@ -92,6 +92,7 @@ function showFlightReceipt(container, receipt) {
 }
 
 function mountFlightRecorder() {
+  mountClerkHistory();
   const root = document.querySelector('#flight-recorder');
   const input = root.querySelector('#flight-receipt');
   const feedback = root.querySelector('[role="status"]');
