@@ -44,3 +44,7 @@ Browser checks use installed Google Chrome and the Windows Python `py` launcher.
 ## M1 offline Prompt Studio
 
 After `npm run build`, open [Prompt Studio](http://localhost:8000/app/#/studio) from the workspace. It builds and edits one validated invoice fixture, saves accepted draft changes in browser local storage, and supports reviewed mock revisions. It cannot connect accounts, activate a workflow, or run external actions. See [M1 verification and limits](docs/M1.md).
+
+## M2 PostgreSQL checks
+
+With PostgreSQL's `initdb`, `pg_ctl`, and `psql` on your PATH, run `npm run test:db` as a regular user. The suite creates a temporary cluster on a free loopback port, applies the migration, tests workspace access under the runtime role, and removes the cluster. It uses synthetic fixtures and does not connect to your existing database. See the [backend plan](BACKEND_PLAN.md#15-development-deployment-and-recovery) for the runtime authorization contract.

@@ -1,6 +1,6 @@
 # Runspell backend implementation plan
 
-Updated 26 November 2026. Backend implementation starts at M2. See the [roadmap](ROADMAP.md) for delivery order and progress.
+Updated 26 November 2026. M2 has started with the PostgreSQL workspace and workflow migration. See the [roadmap](ROADMAP.md) for delivery order and progress.
 
 ## 1. Product and operating model
 
@@ -342,6 +342,12 @@ app/                   Existing workspace frontend
 ```
 
 Run the API locally alongside the current static frontend, using a development proxy or explicitly allowed development origin. Use isolated development/staging databases, Trigger environments, Steel projects or equivalent provider boundaries, credentials, and object-storage prefixes/buckets.
+
+The first [migration](server/migrations/001_workspace_workflows.sql) creates users, workspaces, memberships, workflow drafts, and stored versions. Before applying it, a database administrator provisions `runspell_runtime` as a dedicated `NOLOGIN`, `NOBYPASSRLS` role without administrative privileges or table ownership. Apply migrations as a separate schema owner. The future API database login may assume only the runtime role for workspace queries.
+
+For each workspace request, the future API must verify the identity-provider token and resolve the validated issuer and subject to an internal UUID through a separate, narrowly scoped identity lookup. It then sets that UUID with parameterized `set_config('runspell.user_id', $1, true)` on the same transaction and connection used for workspace queries. This setting is a trusted server input. Client-supplied IDs, headers, and direct database access cannot establish identity. Row-level security lets members read their workspaces and lets owners, admins, and editors write drafts. The runtime role cannot change memberships, move workflows between workspaces, or write stored versions.
+
+The API must validate definitions with the shared contracts before saving. Draft updates must match the expected revision in the same update that increments it. Activation will require a separate server-controlled write path. `npm run test:db` exercises the migration and policies on a disposable PostgreSQL instance.
 
 Configuration includes database access, auth issuer/client settings, Trigger and Steel credentials, artifact-store settings, encryption key references, and runtime limits. Put only placeholder names in `.env.example`; validate configuration on startup and never log values.
 

@@ -1,6 +1,6 @@
 # Runspell product and engineering roadmap
 
-Updated 26 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. The M0 live provider gate remains pending. M2–M9 are planned.
+Updated 26 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. M2 is in progress. The M0 live provider gate remains pending, and M3–M9 are planned.
 
 ## 1. Purpose and source documents
 
@@ -223,12 +223,13 @@ For each implemented slice:
 | M0 live feasibility | Pending authorization | A live Trigger.dev, Steel, and Playwright spike must verify login, session cleanup, viewer access, network controls, and usage |
 | M1 offline authoring | Verified | Fixture-based Prompt Studio with editable nodes, reviewed mock revisions, validation, explicit import, interruption recovery, and browser-local persistence. See [M1 evidence](docs/M1.md) |
 | Runspell rebrand | Verified locally | Landing and workspace branding, page metadata, and package metadata use Runspell. Existing routes, animations, and local draft keys are retained |
-| M2–M9 | Planned | Server persistence, managed identity, model calls, connected accounts, real execution, and launch controls remain future work |
+| M2 workspace and workflow schema | Verified locally | PostgreSQL 18 migration covers identities, memberships, draft storage, version records, and workspace access policies. See the [backend plan](BACKEND_PLAN.md#15-development-deployment-and-recovery) |
+| Remaining M2 and M3–M9 | Planned | API, managed identity, activation, connection storage, run records, durable dispatch, and later milestones |
 
 Local verification on 26 November 2026 passed type checking, all 26 TypeScript tests, all 3 Python frontend tests, and all 8 Playwright tests. The frontend build passed with upstream React Flow and React compiler directive warnings. The live provider gate remains pending. This repo has no separate lint command.
 
 ## 9. Next work
 
-1. Start local M2 work with shared schemas, PostgreSQL migrations, and workspace authorization tests. Select managed identity and storage before wiring those services.
+1. Continue M2 with the Fastify API, shared-contract draft validation, and revision-checked persistence. Select managed identity and storage before wiring those services.
 2. Resume the M0 live spike after approval of the portal, test accounts, and spending limit. Record actual session, cleanup, access, and usage results before closing feasibility.
 3. Implement M3 with Gemini and M4 with the chosen portal and API integration. At M5, verify the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.

@@ -8,6 +8,7 @@
     "build:canvas": "vite build --config canvas/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/m0/*.test.ts tests/m1/*.test.ts",
+    "test:db": "node server/tests/run-postgres.mjs",
     "test:browser": "playwright test",
     "preview": "py -m http.server 8000 --bind 127.0.0.1"
   },
