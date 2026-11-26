@@ -45,9 +45,10 @@ try {
     '-c', 'GRANT runspell_runtime TO runspell_test_api',
     '-f', 'server/migrations/001_workspace_workflows.sql',
     '-f', 'server/migrations/002_workflow_ids.sql',
+    '-f', 'server/migrations/003_ai_generations.sql',
     '-f', 'server/tests/workspace-isolation.sql',
   ]);
-  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts'], {
+  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts', 'server/tests/planner-api.test.ts'], {
     ...postgresEnv, RUNSPELL_TEST_PG_PORT: String(port),
   });
 } finally {

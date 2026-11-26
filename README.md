@@ -5,7 +5,7 @@ The [roadmap](ROADMAP.md) tracks the Runspell plan and progress. The landing pag
 Run from this directory:
 
 ```powershell
-py -m http.server 8000 --bind 127.0.0.1
+py scripts/preview.py
 ```
 
 Open [the landing page](http://localhost:8000/) and select **Open workspace**, or open [the workspace](http://localhost:8000/app/#/overview) directly. Serve the files over HTTP so the landing page's JavaScript module loads correctly.
@@ -48,3 +48,11 @@ After `npm run build`, open [Prompt Studio](http://localhost:8000/app/#/studio) 
 ## M2 PostgreSQL checks
 
 With PostgreSQL's `initdb`, `pg_ctl`, and `psql` on your PATH, run `npm run test:db` as a regular user. The suite starts a temporary cluster on a free loopback port, applies the migrations, and checks the workspace policies and workflow draft API before removing the cluster. The API tests use Fastify injection and a test identity resolver. See the [backend plan](BACKEND_PLAN.md#15-development-deployment-and-recovery) for the runtime authorization contract.
+
+## M3 Gemini configuration
+
+Copy `.env.example` to `.env` if the file is missing. Set `GEMINI_API_KEY` in `.env` and keep that file private. The default model in the template is [Gemini 3.1 Flash-Lite](https://aistudio.google.com/docs/models/gemini-3.1-flash-lite).
+
+For a live check with a synthetic prompt, set `RUNSPELL_ENABLE_GEMINI=true` and run `npm run test:gemini-live`. This sends one model request with a fixed example and validates the resulting draft locally. It may consume provider quota. Automated tests use simulated responses.
+
+The API reads these options from its Node environment. A server process can load them with `--env-file=.env`. Use the loopback preview above, which serves only the public frontend assets. The current Prompt Studio still uses local fixtures.

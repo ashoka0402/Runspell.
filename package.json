@@ -7,10 +7,11 @@
     "build": "npm run build:canvas",
     "build:canvas": "vite build --config canvas/vite.config.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/m0/*.test.ts tests/m1/*.test.ts",
+    "test": "tsx --test tests/m0/*.test.ts tests/m1/*.test.ts server/tests/gemini.test.ts",
     "test:db": "node server/tests/run-postgres.mjs",
+    "test:gemini-live": "node --env-file=.env --import tsx server/tests/gemini-live.ts",
     "test:browser": "playwright test",
-    "preview": "py -m http.server 8000 --bind 127.0.0.1"
+    "preview": "py scripts/preview.py"
   },
   "dependencies": {
     "@xyflow/react": "13.0.2",

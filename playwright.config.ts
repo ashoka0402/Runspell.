@@ -7,16 +7,16 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:8000',
+    baseURL: 'http://127.0.0.1:8001',
     channel: 'chrome',
     headless: true,
     viewport: { width: 1440, height: 1000 },
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'py -m http.server 8000 --bind 127.0.0.1',
-    url: 'http://127.0.0.1:8000',
-    reuseExistingServer: true,
+    command: 'py scripts/preview.py 8001',
+    url: 'http://127.0.0.1:8001',
+    reuseExistingServer: false,
     timeout: 15_000,
   },
 });

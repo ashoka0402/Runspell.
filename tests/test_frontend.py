@@ -1,11 +1,21 @@
+from functools import partial
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
 from html.parser import HTMLParser
 from pathlib import Path
 import re
+import sys
+from tempfile import TemporaryDirectory
+from threading import Thread
 import unittest
 from urllib.parse import unquote, urlsplit
 
-
 ROOT = Path(__file__).resolve().parents[1]
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(ROOT))
+
+from scripts.preview import PUBLIC_FILES, PreviewHandler
 
 
 class Page(HTMLParser):
@@ -19,6 +29,52 @@ class Page(HTMLParser):
 
 
 class FrontendIntegrationTests(unittest.TestCase):
+    def test_preview_serves_only_public_assets(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("index.html", "app/index.html", "app/m0-canvas/canvas.js",
+                         "relay-source/style.css", ".env", ".git/config", "server/source.ts"):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture", encoding="utf-8")
+
+            handler = partial(PreviewHandler, directory=directory)
+            with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+                thread = Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+                try:
+                    for url in ("/", "/app/", "/app/m0-canvas/canvas.js", "/relay-source/style.css?cache=1"):
+                        with self.subTest(url=url):
+                            connection.request("GET", url)
+                            response = connection.getresponse()
+                            self.assertEqual(response.status, 200)
+                            self.assertEqual(response.read(), b"fixture")
+
+                    connection.request("GET", "/app")
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 301)
+                    self.assertEqual(response.getheader("Location"), "/app/")
+                    response.read()
+
+                    for url in ("/.env", "/%2eenv", "/.git/config", "/server/source.ts",
+                                "/app/%2e%2e/.env", "/app/%2e%2e%5c.env",
+                                "/app/%252e%252e/.env", "/relay-source/"):
+                        with self.subTest(url=url):
+                            connection.request("GET", url)
+                            response = connection.getresponse()
+                            self.assertEqual(response.status, 404)
+                            self.assertNotIn(b"fixture", response.read())
+
+                    connection.request("HEAD", "/.env")
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 404)
+                    self.assertEqual(response.read(), b"")
+                finally:
+                    connection.close()
+                    server.shutdown()
+                    thread.join()
+
     def test_local_assets_and_navigation_targets_exist(self):
         for entry in (ROOT / "index.html", ROOT / "app/index.html"):
             page = Page(entry)
@@ -35,6 +91,7 @@ class FrontendIntegrationTests(unittest.TestCase):
                         target /= "index.html"
                     self.assertTrue(target.is_relative_to(ROOT), reference)
                     self.assertTrue(target.is_file(), reference)
+                    self.assertIn("/" + target.relative_to(ROOT).as_posix(), PUBLIC_FILES)
                     if url.fragment and not url.fragment.startswith("/"):
                         ids = {attrs.get("id") for _, attrs in Page(target).elements}
                         self.assertIn(unquote(url.fragment), ids)
