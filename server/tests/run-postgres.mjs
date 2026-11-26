@@ -12,8 +12,8 @@ const postgresEnv = Object.fromEntries(
   Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('PG')),
 );
 
-function run(command, args) {
-  const result = spawnSync(command, args, { cwd: root, env: postgresEnv, stdio: 'inherit' });
+function run(command, args, env = postgresEnv) {
+  const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} exited with ${result.status ?? result.signal}`);
 }
@@ -41,9 +41,15 @@ try {
   run('psql', [
     ...psql,
     '-c', 'CREATE ROLE runspell_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS',
+    '-c', 'CREATE ROLE runspell_test_api LOGIN NOINHERIT',
+    '-c', 'GRANT runspell_runtime TO runspell_test_api',
     '-f', 'server/migrations/001_workspace_workflows.sql',
+    '-f', 'server/migrations/002_workflow_ids.sql',
     '-f', 'server/tests/workspace-isolation.sql',
   ]);
+  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts'], {
+    ...postgresEnv, RUNSPELL_TEST_PG_PORT: String(port),
+  });
 } finally {
   if (started) run('pg_ctl', ['-D', data, '-w', 'stop', '-m', 'fast']);
   rmSync(directory, { recursive: true, force: true, maxRetries: 3 });

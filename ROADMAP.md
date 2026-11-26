@@ -224,12 +224,13 @@ For each implemented slice:
 | M1 offline authoring | Verified | Fixture-based Prompt Studio with editable nodes, reviewed mock revisions, validation, explicit import, interruption recovery, and browser-local persistence. See [M1 evidence](docs/M1.md) |
 | Runspell rebrand | Verified locally | Landing and workspace branding, page metadata, and package metadata use Runspell. Existing routes, animations, and local draft keys are retained |
 | M2 workspace and workflow schema | Verified locally | PostgreSQL 18 migration covers identities, memberships, draft storage, version records, and workspace access policies. See the [backend plan](BACKEND_PLAN.md#15-development-deployment-and-recovery) |
-| Remaining M2 and M3–M9 | Planned | API, managed identity, activation, connection storage, run records, durable dispatch, and later milestones |
+| M2 Fastify draft API | Verified locally | PostgreSQL-backed list, create, read, and revision-checked replacement routes use shared validation and workspace policies. HTTP tests inject verified identities |
+| Remaining M2 and M3–M9 | Planned | Managed identity, activation, connection storage, run records, durable dispatch, and later milestones |
 
 Local verification on 26 November 2026 passed type checking, all 26 TypeScript tests, all 3 Python frontend tests, and all 8 Playwright tests. The frontend build passed with upstream React Flow and React compiler directive warnings. The live provider gate remains pending. This repo has no separate lint command.
 
 ## 9. Next work
 
-1. Continue M2 with the Fastify API, shared-contract draft validation, and revision-checked persistence. Select managed identity and storage before wiring those services.
+1. Continue M2 with managed identity and explicit workflow activation. Select the identity and storage providers before wiring their services.
 2. Resume the M0 live spike after approval of the portal, test accounts, and spending limit. Record actual session, cleanup, access, and usage results before closing feasibility.
 3. Implement M3 with Gemini and M4 with the chosen portal and API integration. At M5, verify the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.

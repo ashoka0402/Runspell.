@@ -1,6 +1,6 @@
 # Runspell backend implementation plan
 
-Updated 26 November 2026. M2 has started with the PostgreSQL workspace and workflow migration. See the [roadmap](ROADMAP.md) for delivery order and progress.
+M2 is in progress. The PostgreSQL workspace schema and Fastify draft API are implemented for local integration. See the [roadmap](ROADMAP.md) for delivery order and progress.
 
 ## 1. Product and operating model
 
@@ -254,6 +254,8 @@ Paths in this table are relative to `/api/v1`. Webhook ingress uses provider ver
 
 Use cursor pagination, consistent error codes, request correlation IDs, `409` for stale draft revisions, and explicit rate-limit responses. Expose sanitized errors; keep secrets and provider tokens out of responses.
 
+The implemented draft routes list, create, read, and replace drafts. Collection reads return up to 50 summaries and a nullable `nextCursor` for the `after` query parameter. Item reads and writes include the stored definition. Creation accepts `{ definition }`, and replacement accepts `{ expectedRevision, definition }`. Clients omit the definition's `id` and `workspaceId` on writes. The server derives both from the route and row UUIDs. An empty graph can be saved as an inert draft. A populated graph must pass the shared compiler against server-approved origins. Explicit connection IDs require the future connection service.
+
 ## 11. Identity, credentials, and security
 
 - Integrate managed authentication rather than implementing password storage. Verify issuer, audience, signature, expiry, and workspace membership on the server.
@@ -343,11 +345,11 @@ app/                   Existing workspace frontend
 
 Run the API locally alongside the current static frontend, using a development proxy or explicitly allowed development origin. Use isolated development/staging databases, Trigger environments, Steel projects or equivalent provider boundaries, credentials, and object-storage prefixes/buckets.
 
-The first [migration](server/migrations/001_workspace_workflows.sql) creates users, workspaces, memberships, workflow drafts, and stored versions. Before applying it, a database administrator provisions `runspell_runtime` as a dedicated `NOLOGIN`, `NOBYPASSRLS` role without administrative privileges or table ownership. Apply migrations as a separate schema owner. The future API database login may assume only the runtime role for workspace queries.
+The [migrations](server/migrations/) create users, workspaces, memberships, workflow drafts, and stored versions. Before applying them, a database administrator provisions `runspell_runtime` as a dedicated `NOLOGIN`, `NOBYPASSRLS` role without administrative privileges or table ownership. Apply migrations as a separate schema owner. The API pool uses a dedicated database login that can assume the runtime role for workspace queries.
 
-For each workspace request, the future API must verify the identity-provider token and resolve the validated issuer and subject to an internal UUID through a separate, narrowly scoped identity lookup. It then sets that UUID with parameterized `set_config('runspell.user_id', $1, true)` on the same transaction and connection used for workspace queries. This setting is a trusted server input. Client-supplied IDs, headers, and direct database access cannot establish identity. Row-level security lets members read their workspaces and lets owners, admins, and editors write drafts. The runtime role cannot change memberships, move workflows between workspaces, or write stored versions.
+The Fastify app requires a trusted server-side identity resolver. The managed identity adapter will verify identity-provider tokens and map validated issuers and subjects to internal UUIDs through a separate, narrowly scoped lookup. The app sets the role and validated actor on the same transaction and connection used for workspace queries. Row-level security lets members read their workspaces and lets owners, admins, and editors write drafts. The runtime role cannot change memberships, move workflows between workspaces, or write stored versions.
 
-The API must validate definitions with the shared contracts before saving. Draft updates must match the expected revision in the same update that increments it. Activation will require a separate server-controlled write path. `npm run test:db` exercises the migration and policies on a disposable PostgreSQL instance.
+Draft writes use the shared validator and an atomic revision check. Activation will require a separate server-controlled write path. `npm run test:db` exercises the migration, policies, and draft routes against disposable PostgreSQL.
 
 Configuration includes database access, auth issuer/client settings, Trigger and Steel credentials, artifact-store settings, encryption key references, and runtime limits. Put only placeholder names in `.env.example`; validate configuration on startup and never log values.
 
