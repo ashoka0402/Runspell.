@@ -43,12 +43,17 @@ try {
     '-c', 'CREATE ROLE runspell_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS',
     '-c', 'CREATE ROLE runspell_test_api LOGIN NOINHERIT',
     '-c', 'GRANT runspell_runtime TO runspell_test_api',
+    '-c', 'CREATE ROLE runspell_mock_worker NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS',
+    '-c', 'CREATE ROLE runspell_test_mock_worker LOGIN NOINHERIT',
+    '-c', 'GRANT runspell_mock_worker TO runspell_test_mock_worker',
     '-f', 'server/migrations/001_workspace_workflows.sql',
     '-f', 'server/migrations/002_workflow_ids.sql',
     '-f', 'server/migrations/003_ai_generations.sql',
+    '-f', 'server/migrations/004_mock_run_admission.sql',
+    '-f', 'server/migrations/005_mock_dispatch.sql',
     '-f', 'server/tests/workspace-isolation.sql',
   ]);
-  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts', 'server/tests/planner-api.test.ts'], {
+  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts', 'server/tests/planner-api.test.ts', 'server/tests/run-admission.test.ts'], {
     ...postgresEnv, RUNSPELL_TEST_PG_PORT: String(port),
   });
 } finally {

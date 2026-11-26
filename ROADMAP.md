@@ -1,6 +1,6 @@
 # Runspell product and engineering roadmap
 
-Updated 26 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. M2 and M3 are in progress. The M0 live provider gate remains pending, and M4–M9 are planned.
+Updated 26 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. M2, M3, and M4 are in progress. The M0 live provider gate remains pending.
 
 ## 1. Purpose and source documents
 
@@ -226,7 +226,8 @@ For each implemented slice:
 | M2 workspace and workflow schema | Verified locally | PostgreSQL 18 migration covers identities, memberships, draft storage, version records, and workspace access policies. See the [backend plan](BACKEND_PLAN.md#15-development-deployment-and-recovery) |
 | M2 Fastify draft API | Verified locally | PostgreSQL-backed list, create, read, and revision-checked replacement routes use shared validation and workspace policies. HTTP tests inject verified identities |
 | M3 planning API and Gemini adapter | Implemented locally | Inactive drafts, reviewable revision proposals, durable outcomes, scoped event replay, and workspace quotas. Live Gemini and browser integration remain pending |
-| Remaining M2 and M4–M9 | Planned | Managed identity, activation, connection storage, run records, durable dispatch, and later milestones |
+| M4 local manual mock execution | Implemented locally | Explicit activation, immutable version pinning, idempotent acceptance, transactional outbox dispatch, and receipts built from simulated steps |
+| Remaining M2 and M4–M9 | Planned | Managed identity, live activation, connection storage, provider dispatch and execution, schedules, webhook starts, and later milestones |
 
 Local verification on 26 November 2026 passed type checking, all 26 TypeScript tests, all 3 Python frontend tests, and all 8 Playwright tests. The frontend build passed with upstream React Flow and React compiler directive warnings. The live provider gate remains pending. This repo has no separate lint command.
 
@@ -235,4 +236,4 @@ Local verification on 26 November 2026 passed type checking, all 26 TypeScript t
 1. Continue M2 with managed identity and explicit workflow activation. Select the identity and storage providers before wiring their services.
 2. Resume the M0 live spike after approval of the portal, test accounts, and spending limit. Record actual session, cleanup, access, and usage results before closing feasibility.
 3. Qualify M3 with a live synthetic Gemini check and the representative prompt suite. Connect Prompt Studio to authenticated API events and verify recovery when the original generation response is interrupted.
-4. Implement M4 with the chosen portal and API integration. At M5, verify the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.
+4. Continue M4 with live execution prerequisites and verify the chosen portal and API integration after the live provider gate. At M5, verify the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.

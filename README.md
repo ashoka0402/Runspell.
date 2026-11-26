@@ -56,3 +56,7 @@ Copy `.env.example` to `.env` if the file is missing. Set `GEMINI_API_KEY` in `.
 For a live check with a synthetic prompt, set `RUNSPELL_ENABLE_GEMINI=true` and run `npm run test:gemini-live`. This sends one model request with a fixed example and validates the resulting draft locally. It may consume provider quota. Automated tests use simulated responses.
 
 The API reads these options from its Node environment. A server process can load them with `--env-file=.env`. Use the loopback preview above, which serves only the public frontend assets. The current Prompt Studio still uses local fixtures.
+
+## M4 manual mock runs
+
+`npm run test:db` also verifies mock activation, idempotent admission, and local dispatch through PostgreSQL. For manual dispatch against a migrated development database, set `RUNSPELL_MOCK_DATABASE_URL` in the private `.env` using the dedicated mock worker login and run `npm run dispatch:mock`. Each invocation processes one pending mock run and stores a receipt with simulated outputs. See the [backend plan](BACKEND_PLAN.md#10-http-api-surface) for the API and role requirements.

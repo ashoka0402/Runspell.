@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyRequest } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import { CompilePolicySchema, compileWorkflow, ContractError, type Workflow } from '../../shared/index.js';
+import { CompilePolicySchema, compileWorkflow, ContractError, WorkflowSchema, type Workflow } from '../../shared/index.js';
 import { geminiFromEnv, type PlannerProvider, type PlannerResult } from './gemini.js';
 import { definitionSchema, plannerInput, plannerOutput, promptSchema, restoreUnchangedValues, revisionSchema } from './planner.js';
 
@@ -18,6 +18,11 @@ const generationPath = workspacePath.extend({ gid: uuid });
 const promptBody = z.strictObject({ prompt: promptSchema });
 const editBody = promptBody.extend({ expectedRevision: revisionSchema });
 const applyBody = z.strictObject({ generationId: uuid });
+const mockBody = z.strictObject({ mode: z.literal('mock') });
+const activateBody = mockBody.extend({ expectedRevision: revisionSchema });
+const idempotencyKey = z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/);
+const runRoute = '/api/v1/workspaces/:wid/runs/:runId';
+const runPath = workspacePath.extend({ runId: uuid });
 const generationWindow = "interval '2 minutes'";
 const pageSize = 50;
 const summaryColumns = 'id, workspace_id AS "workspaceId", name, draft_revision AS revision';
@@ -25,6 +30,17 @@ const columns = `${summaryColumns}, draft_definition AS definition`;
 
 type DraftSummary = { id: string; workspaceId: string; name: string; revision: number };
 type Draft = DraftSummary & { definition: Workflow };
+type MockVersion = { id: string; versionNumber: number; draftRevision: number };
+type MockRun = {
+  id: string;
+  workflowId: string;
+  workflowVersionId: string;
+  status: 'accepted' | 'succeeded' | 'failed';
+  mode: 'mock';
+  createdAt: Date;
+  finishedAt: Date | null;
+  result: unknown;
+};
 type Proposal = { workflowId: string; expectedRevision: number; definition: Workflow };
 type Outcome = (
   { status: 'ready'; assumptions: string[]; connectionRequirements: ReturnType<typeof compileWorkflow>['connectionRequirements'] }
@@ -158,6 +174,16 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
     throw new ApiError(409, 'REVISION_CONFLICT');
   }
 
+  async function readRun(client: PoolClient, workspaceId: string, id: string) {
+    const result = await client.query<MockRun>(
+      `SELECT id, workflow_id AS "workflowId", workflow_version_id AS "workflowVersionId",
+        status, mode, created_at AS "createdAt", finished_at AS "finishedAt", result
+       FROM runspell.runs WHERE workspace_id = $1 AND id = $2`, [workspaceId, id],
+    );
+    if (!result.rows[0]) throw new ApiError(404, 'RUN_NOT_FOUND');
+    return result.rows[0];
+  }
+
   app.get(route, async (request) => {
     const { wid } = parse(workspacePath, request.params, 400, 'INVALID_PATH');
     const { after } = parse(listQuery, request.query, 400, 'INVALID_CURSOR');
@@ -194,6 +220,47 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
       const { workflow } = validateDefinition(definition, wid, id);
       return replaceDraft(client, wid, id, workflow, expectedRevision);
     });
+  });
+
+  app.post(`${route}/:id/activate`, async (request) => {
+    const { wid, id } = parse(workflowPath, request.params, 400, 'INVALID_PATH');
+    return inWorkspace(request, wid, true, async (client) => {
+      const { expectedRevision } = parse(activateBody, request.body, 422, 'INVALID_ACTIVATION');
+      const draft = await readDraft(client, wid, id);
+      if (expectedRevision !== draft.revision) throw new ApiError(409, 'REVISION_CONFLICT');
+      const { id: storedId, workspaceId: storedWorkspace, ...definition } =
+        parse(WorkflowSchema, draft.definition, 422, 'INVALID_DEFINITION');
+      const { workflow } = validateDefinition(definition, wid, id);
+      if (!workflow.nodes.length || storedId !== workflow.id || storedWorkspace !== workflow.workspaceId) {
+        throw new ApiError(422, 'INVALID_DEFINITION');
+      }
+      const result = await client.query<MockVersion>(
+        `SELECT id, version_number AS "versionNumber", draft_revision AS "draftRevision"
+         FROM runspell.activate_mock_workflow($1, $2, $3, $4)`, [wid, id, expectedRevision, draft.definition],
+      );
+      if (!result.rows[0]) throw new ApiError(409, 'REVISION_CONFLICT');
+      return { ...result.rows[0], mode: 'mock' };
+    });
+  });
+
+  app.post(`${route}/:id/runs`, async (request, reply) => {
+    const { wid, id } = parse(workflowPath, request.params, 400, 'INVALID_PATH');
+    const run = await inWorkspace(request, wid, true, async (client) => {
+      parse(mockBody, request.body, 422, 'INVALID_RUN_MODE');
+      const key = parse(idempotencyKey, request.headers['idempotency-key'], 400, 'INVALID_IDEMPOTENCY_KEY');
+      await readDraft(client, wid, id);
+      const result = await client.query<{ id: string }>(
+        'SELECT id FROM runspell.admit_mock_run($1, $2, $3)', [wid, id, key],
+      );
+      if (!result.rows[0]) throw new ApiError(409, 'MOCK_RUN_UNAVAILABLE');
+      return readRun(client, wid, result.rows[0].id);
+    });
+    return reply.code(run.status === 'accepted' ? 202 : 200).send(run);
+  });
+
+  app.get(runRoute, async (request) => {
+    const { wid, runId } = parse(runPath, request.params, 400, 'INVALID_PATH');
+    return inWorkspace(request, wid, false, (client) => readRun(client, wid, runId));
   });
 
   const expiredOutcome = { status: 'failed', message: 'Generation expired before it finished.' } as const;
