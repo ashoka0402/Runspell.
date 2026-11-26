@@ -4,6 +4,7 @@ import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { CompilePolicySchema, compileWorkflow, ContractError, WorkflowSchema, type Workflow } from '../../shared/index.js';
 import { geminiFromEnv, type PlannerProvider, type PlannerResult } from './gemini.js';
+import { buildMockReceipt } from './flight-recorder.js';
 import { definitionSchema, plannerInput, plannerOutput, promptSchema, restoreUnchangedValues, revisionSchema } from './planner.js';
 
 const uuid = z.uuid().transform((id) => id.toLowerCase());
@@ -261,6 +262,31 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
   app.get(runRoute, async (request) => {
     const { wid, runId } = parse(runPath, request.params, 400, 'INVALID_PATH');
     return inWorkspace(request, wid, false, (client) => readRun(client, wid, runId));
+  });
+
+  async function recordedRun(client: PoolClient, wid: string, runId: string) {
+    const run = await readRun(client, wid, runId);
+    const result = await client.query<{ id: string; number: number; draftRevision: number | null }>(
+      `SELECT id, version_number AS number, draft_revision AS "draftRevision"
+       FROM runspell.workflow_versions WHERE workspace_id = $1 AND workflow_id = $2 AND id = $3`,
+      [wid, run.workflowId, run.workflowVersionId],
+    );
+    const version = result.rows[0];
+    if (!version || version.draftRevision === null) throw new Error('Run does not have a recorded workflow version');
+    return buildMockReceipt(run, { ...version, draftRevision: version.draftRevision });
+  }
+
+  app.get(`${runRoute}/evidence`, async (request, reply) => {
+    const { wid, runId } = parse(runPath, request.params, 400, 'INVALID_PATH');
+    reply.header('Cache-Control', 'private, no-store');
+    return inWorkspace(request, wid, false, (client) => recordedRun(client, wid, runId));
+  });
+
+  app.get(`${runRoute}/receipt`, async (request, reply) => {
+    const { wid, runId } = parse(runPath, request.params, 400, 'INVALID_PATH');
+    reply.header('Cache-Control', 'private, no-store');
+    const receipt = await inWorkspace(request, wid, false, (client) => recordedRun(client, wid, runId));
+    return reply.header('Content-Disposition', `attachment; filename="runspell-receipt-${runId}.json"`).send(receipt);
   });
 
   const expiredOutcome = { status: 'failed', message: 'Generation expired before it finished.' } as const;

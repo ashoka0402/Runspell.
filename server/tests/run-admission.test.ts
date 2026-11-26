@@ -19,7 +19,10 @@ type Run = {
 type MockReceipt = Omit<Run, 'status'> & {
   status: 'succeeded';
   finishedAt: string;
-  result: { evidence: string; steps: { outcome: string }[] };
+  result: {
+    evidence: string;
+    steps: { nodeId: string; actionType: string; outcome: string; output?: Record<string, unknown> }[];
+  };
 };
 
 const { id: _fixtureId, workspaceId: _fixtureWorkspaceId, ...definition } = invoiceWorkflow;
@@ -42,6 +45,7 @@ test('mock run admission pins revisions and concurrent workers dispatch each acc
   const appOptions: Omit<Parameters<typeof buildDraftApi>[0], 'pool'> = {
     allowedOrigins: invoicePolicy.allowedOrigins,
     authenticate: async (request) => Object.entries(tokens).find(([token]) => token === request.headers.authorization)?.[1] ?? null,
+    planner: async () => ({ output: { status: 'candidate', definition, assumptions: [] } }),
   };
   const app = buildDraftApi({ ...appOptions, pool });
   const concurrentApp = buildDraftApi({ ...appOptions, pool: concurrentPool });
@@ -95,7 +99,14 @@ test('mock run admission pins revisions and concurrent workers dispatch each acc
     });
   }
 
-  const workflowId = await createDraft(definition);
+  const generated = await app.inject({
+    method: 'POST', url: `${workspacePath(workspaceA)}/ai/generations`, headers: editor,
+    payload: { prompt: 'Prepare the synthetic invoice workflow for mock testing.' },
+  });
+  assert.equal(generated.statusCode, 201, generated.body);
+  const { status, draft } = generated.json<{ status: string; draft: { id: string } }>();
+  assert.equal(status, 'ready');
+  const workflowId = draft.id;
   const inactive = await admit(workflowId, 'before-activation');
   assert.equal(inactive.statusCode, 409, inactive.body);
   const emptyId = await createDraft({ ...definition, name: 'Empty draft', nodes: [], edges: [] });
@@ -195,9 +206,27 @@ test('mock run admission pins revisions and concurrent workers dispatch each acc
   assert.equal(read.statusCode, 200, read.body);
   assert.deepEqual(read.json<Run>(), initialRun);
   for (const url of [readPath, `${workspacePath(workspaceB)}/runs/${initialRun.id}`]) {
-    const denied = await app.inject({ method: 'GET', url, headers: outsider });
-    assert.equal(denied.statusCode, 404, denied.body);
+    for (const suffix of ['', '/evidence', '/receipt']) {
+      const denied = await app.inject({ method: 'GET', url: url + suffix, headers: outsider });
+      assert.equal(denied.statusCode, 404, denied.body);
+    }
   }
+  const waiting = await app.inject({ method: 'GET', url: readPath + '/evidence', headers: viewer });
+  assert.equal(waiting.statusCode, 200, waiting.body);
+  assert.match(String(waiting.headers['cache-control']), /\bno-store\b/);
+  assert.deepEqual(waiting.json(), {
+    schemaVersion: 1,
+    runId: initialRun.id,
+    workflowId,
+    workflowVersion: { id: v1.id, number: v1.versionNumber, draftRevision: v1.draftRevision },
+    mode: 'mock',
+    status: 'accepted',
+    evidence: 'pending',
+    externalOutcome: 'not_attempted',
+    acceptedAt: initialRun.createdAt,
+    finishedAt: null,
+    timeline: [{ kind: 'accepted', at: initialRun.createdAt }],
+  });
 
   const scheduledId = await createDraft({
     ...definition, name: 'Scheduled draft', triggers: [{ id: 'schedule_start', type: 'schedule' }],
@@ -259,7 +288,8 @@ test('mock run admission pins revisions and concurrent workers dispatch each acc
   assert.equal(drained.rowCount, 0);
 
   for (const run of [initialRun, pinnedRun, latestRun]) {
-    const response = await app.inject({ method: 'GET', url: `${workspacePath(workspaceA)}/runs/${run.id}`, headers: viewer });
+    const runPath = `${workspacePath(workspaceA)}/runs/${run.id}`;
+    const response = await app.inject({ method: 'GET', url: runPath, headers: viewer });
     assert.equal(response.statusCode, 200, response.body);
     const receipt = response.json<MockReceipt>();
     assert.equal(receipt.id, run.id);
@@ -269,8 +299,81 @@ test('mock run admission pins revisions and concurrent workers dispatch each acc
     assert.ok(Date.parse(receipt.finishedAt) >= Date.parse(run.createdAt), response.body);
     assert.equal(receipt.result.evidence, 'simulated');
     assert.ok(receipt.result.steps.some((step) => step.outcome === 'simulated'), response.body);
+
+    const recorder = await app.inject({ method: 'GET', url: runPath + '/evidence', headers: viewer });
+    assert.equal(recorder.statusCode, 200, recorder.body);
+    assert.match(String(recorder.headers['cache-control']), /\bno-store\b/);
+    assert.doesNotMatch(recorder.body, /MOCK-INV-001|mock-artifact|mock-notification|https?:\/\/|:\s*64000\b/);
+    const record = recorder.json<{ timeline: { kind: string; outputFields?: string[] }[] }>();
+    const version = run.id === latestRun.id ? v2 : v1;
+    assert.deepEqual({
+      ...record,
+      timeline: record.timeline.map((event) => {
+        if (event.kind !== 'step') return event;
+        assert.ok(Array.isArray(event.outputFields), recorder.body);
+        return { ...event, outputFields: [...event.outputFields].sort() };
+      }),
+    }, {
+      schemaVersion: 1,
+      runId: run.id,
+      workflowId,
+      workflowVersion: { id: version.id, number: version.versionNumber, draftRevision: version.draftRevision },
+      mode: 'mock',
+      status: 'succeeded',
+      evidence: 'simulated',
+      externalOutcome: 'not_attempted',
+      acceptedAt: run.createdAt,
+      finishedAt: receipt.finishedAt,
+      timeline: [
+        { kind: 'accepted', at: run.createdAt },
+        ...receipt.result.steps.map(({ nodeId, actionType, outcome, output }) => ({
+          kind: 'step', nodeId, actionType, outcome, outputFields: Object.keys(output ?? {}).sort(),
+        })),
+        { kind: 'finished', at: receipt.finishedAt, status: 'succeeded' },
+      ],
+    });
+
+    const download = await app.inject({ method: 'GET', url: runPath + '/receipt', headers: viewer });
+    assert.equal(download.statusCode, 200, download.body);
+    assert.match(String(download.headers['cache-control']), /\bno-store\b/);
+    assert.match(String(download.headers['content-type']), /^application\/json\b/i);
+    assert.match(String(download.headers['content-disposition']), /^attachment;.*\.json/i);
+    assert.deepEqual(download.json(), record);
   }
   const replayedReceipt = await admit(workflowId, 'first-admission');
   assert.equal(replayedReceipt.statusCode, 200, replayedReceipt.body);
   assert.equal(replayedReceipt.json<MockReceipt>().id, initialRun.id);
+
+  const acceptedFailure = await admit(workflowId, 'unsafe-diagnostic-test');
+  assert.equal(acceptedFailure.statusCode, 202, acceptedFailure.body);
+  const failedRun = acceptedFailure.json<Run>();
+  const seeded = await admin.query<{ done: boolean }>(
+    'SELECT runspell.finish_mock_run($1, $2, $3) AS done',
+    [failedRun.id, 'failed', { evidence: 'simulated', code: 'RAW_UNHANDLED_TEST_CODE', detail: 'private fixture diagnostics' }],
+  );
+  assert.deepEqual(seeded.rows, [{ done: true }]);
+  const failure = await app.inject({
+    method: 'GET', url: `${workspacePath(workspaceA)}/runs/${failedRun.id}/evidence`, headers: viewer,
+  });
+  assert.equal(failure.statusCode, 200, failure.body);
+  assert.doesNotMatch(failure.body, /RAW_UNHANDLED_TEST_CODE|private fixture diagnostics/);
+  const failureRecord = failure.json<{ finishedAt: string }>();
+  assert.ok(Date.parse(failureRecord.finishedAt) >= Date.parse(failedRun.createdAt), failure.body);
+  assert.deepEqual(failureRecord, {
+    schemaVersion: 1,
+    runId: failedRun.id,
+    workflowId,
+    workflowVersion: { id: v2.id, number: v2.versionNumber, draftRevision: v2.draftRevision },
+    mode: 'mock',
+    status: 'failed',
+    evidence: 'simulated',
+    externalOutcome: 'not_attempted',
+    acceptedAt: failedRun.createdAt,
+    finishedAt: failureRecord.finishedAt,
+    failureCode: 'MOCK_RUN_FAILED',
+    timeline: [
+      { kind: 'accepted', at: failedRun.createdAt },
+      { kind: 'finished', at: failureRecord.finishedAt, status: 'failed' },
+    ],
+  });
 });

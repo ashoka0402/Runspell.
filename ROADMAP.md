@@ -1,6 +1,6 @@
 # Runspell product and engineering roadmap
 
-Updated 26 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. M2, M3, and M4 are in progress. The M0 live provider gate remains pending.
+Updated 26 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. M2–M5 are in progress. The M0 live provider gate remains pending.
 
 ## 1. Purpose and source documents
 
@@ -227,13 +227,15 @@ For each implemented slice:
 | M2 Fastify draft API | Verified locally | PostgreSQL-backed list, create, read, and revision-checked replacement routes use shared validation and workspace policies. HTTP tests inject verified identities |
 | M3 planning API and Gemini adapter | Implemented locally | Inactive drafts, reviewable revision proposals, durable outcomes, scoped event replay, and workspace quotas. Live Gemini and browser integration remain pending |
 | M4 local manual mock execution | Implemented locally | Explicit activation, immutable version pinning, idempotent acceptance, transactional outbox dispatch, and receipts built from simulated steps |
-| Remaining M2 and M4–M9 | Planned | Managed identity, live activation, connection storage, provider dispatch and execution, schedules, webhook starts, and later milestones |
+| M5 Flight Recorder for mock runs | Implemented locally | Authorized timelines and JSON receipts preserve the pinned version and identify simulated outcomes. The workspace preview opens receipt files locally |
+| Remaining M2 and M4–M9 | Planned | Managed identity, live activation, connection storage, provider execution, schedules, webhook starts, and launch readiness |
 
-Local verification on 26 November 2026 passed type checking, all 26 TypeScript tests, all 3 Python frontend tests, and all 8 Playwright tests. The frontend build passed with upstream React Flow and React compiler directive warnings. The live provider gate remains pending. This repo has no separate lint command.
+Local verification on 26 November 2026 passed type checking, 32 TypeScript unit tests, PostgreSQL integration through the mock prompt-to-receipt flow, 4 Python frontend checks, and 10 Playwright tests. The frontend build passed with upstream React Flow and React compiler directive warnings. The live provider gate remains pending.
 
 ## 9. Next work
 
-1. Continue M2 with managed identity and explicit workflow activation. Select the identity and storage providers before wiring their services.
+1. Continue M2 with managed identity, connection storage, and live workflow activation. Select the identity and storage providers before wiring their services.
 2. Resume the M0 live spike after approval of the portal, test accounts, and spending limit. Record actual session, cleanup, access, and usage results before closing feasibility.
 3. Qualify M3 with a live synthetic Gemini check and the representative prompt suite. Connect Prompt Studio to authenticated API events and verify recovery when the original generation response is interrupted.
-4. Continue M4 with live execution prerequisites and verify the chosen portal and API integration after the live provider gate. At M5, verify the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.
+4. Continue M4 with live execution prerequisites and verify the chosen portal and API integration after the live provider gate.
+5. Continue M5 by connecting Flight Recorder to authorized run history and verifying the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.

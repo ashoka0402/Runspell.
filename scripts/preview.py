@@ -12,6 +12,7 @@ PUBLIC_FILES = {
     "/app/": "/app/index.html",
     "/app/index.html": "/app/index.html",
     "/app/app.js": "/app/app.js",
+    "/app/recorder.js": "/app/recorder.js",
     "/app/style.css": "/app/style.css",
     "/app/workflow.js": "/app/workflow.js",
     "/app/workflow.css": "/app/workflow.css",

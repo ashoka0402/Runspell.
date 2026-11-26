@@ -60,3 +60,7 @@ The API reads these options from its Node environment. A server process can load
 ## M4 manual mock runs
 
 `npm run test:db` also verifies mock activation, idempotent admission, and local dispatch through PostgreSQL. For manual dispatch against a migrated development database, set `RUNSPELL_MOCK_DATABASE_URL` in the private `.env` using the dedicated mock worker login and run `npm run dispatch:mock`. Each invocation processes one pending mock run and stores a receipt with simulated outputs. See the [backend plan](BACKEND_PLAN.md#10-http-api-surface) for the API and role requirements.
+
+## M5 Flight Recorder
+
+In the local workspace, open **Runs → Flight Recorder** at `/app/#/runs/recorder`. Use **Open receipt** to inspect a JSON file downloaded from the authorized `/api/v1/workspaces/:wid/runs/:id/receipt` endpoint. The recorder displays the pinned version, outcome, and timeline in that browser tab. Mock receipts show simulated evidence. See the [backend plan](BACKEND_PLAN.md#10-http-api-surface) for the receipt format and access requirements.

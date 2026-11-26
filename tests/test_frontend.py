@@ -111,7 +111,7 @@ class FrontendIntegrationTests(unittest.TestCase):
     def test_workspace_loads_workflow_before_application(self):
         page = Page(ROOT / "app/index.html")
         scripts = [attrs["src"] for tag, attrs in page.elements if tag == "script"]
-        self.assertEqual(scripts, ["./workflow.js", "./app.js"])
+        self.assertEqual(scripts, ["./workflow.js", "./recorder.js", "./app.js"])
         self.assertTrue(any(attrs.get("id") == "app" for _, attrs in page.elements))
 
 

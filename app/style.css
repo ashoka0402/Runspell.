@@ -126,6 +126,22 @@ body{font-size:14.5px;line-height:1.4;transition:background-color .55s ease,colo
 .m0-intro p { max-width: 80ch; font-size: 14px; line-height: 1.5; }
 .m0-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-block: 16px; }
 #m0-mount-status { color: var(--muted); }
+
+.recorder-sample,.recorder-id{color:var(--muted);font-size:13px}
+.recorder-import{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px}
+.recorder-import label{display:grid;gap:6px;max-width:100%;font-weight:600;font-size:13px}
+.recorder-import input{max-width:100%;color:var(--ink);font:inherit}
+.recorder-status{margin:10px 0;color:var(--ink)}
+.recorder-status:empty{margin:0}
+.recorder-result{overflow-wrap:anywhere}
+.recorder-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:12px;margin:16px 0 24px}
+.recorder-summary div{border:1px solid var(--line);border-radius:12px;padding:10px}
+.recorder-summary dt{color:var(--muted);font-size:12px}
+.recorder-summary dd{margin:4px 0 0;font-weight:600}
+.recorder-result ol{display:grid;gap:8px;margin:10px 0 0;padding-left:24px}
+.recorder-result li{padding:8px 10px;border-bottom:1px solid var(--line)}
+.recorder-result li strong,.recorder-result li span,.recorder-result li small,.recorder-result time{display:block}
+.recorder-result li span,.recorder-result li small,.recorder-result time{color:var(--muted);font-size:13px}
 #m0-canvas-host { display: block; min-width: 0; }
 @media (max-width: 700px) { .m0-link { padding: 8px; font-size: 12px; } }
 

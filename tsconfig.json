@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["shared", "fixtures", "canvas", "studio", "server", "spikes", "trigger", "tests/m0", "tests/m1", "playwright.config.ts", "trigger.config.ts"]
+  "include": ["shared", "fixtures", "canvas", "studio", "server", "spikes", "trigger", "tests/m0", "tests/m1", "tests/m5", "playwright.config.ts", "trigger.config.ts"]
 }
