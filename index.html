@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080a07">
+<title>Runspell | Browser and API Workflow Automation</title>
+<meta name="description" content="Explore Runspell, an AI-assisted platform for dependable browser and API workflows with explicit approvals and verifiable outcomes.">
+<link rel="stylesheet" href="relay-source/style.css">
+<script src="relay-source/relay.js" defer></script>
+<script src="relay-source/stream.js" type="module"></script>
+</head>
+<body>
+<canvas id="stream" aria-hidden="true"></canvas>
+<div class="intro" aria-hidden="true"><span class="mark">❯❯</span></div>
+<header class="top"><div class="wrap nav">
+  <a class="brand" href="#home"><span class="mark">❯❯</span>Runspell</a>
+  <nav aria-label="Main navigation"><a href="#product">Product</a><a href="#how">How it works</a><a href="#activity">Run activity</a><a href="#pricing">Pricing</a></nav>
+  <div class="nav-end"><span class="pill"><i></i> browser automation</span><a class="button primary" href="app/#/overview">Open workspace</a></div>
+</div><div class="reading-progress" aria-hidden="true"></div></header>
+<main id="home">
+<section class="wrap hero" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <span class="pill mono"><i></i> Browser and API workflow automation</span>
+    <h1 id="hero-title"><span>Intelligence designs.</span><em>Runspell executes.</em></h1>
+    <p>Explore how Runspell turns repeatable browser and API tasks into workflows you can review, test, and approve.</p>
+    <div class="actions"><a class="button primary" href="app/#/overview">Open workspace</a><button type="button" class="button secondary" data-run>Try the demo</button></div>
+    <small class="mono hero-note">Try the preview with sample data and simulated runs</small>
+  </div>
+  <div class="mock glass" id="workflow" aria-label="Browser workflow simulation">
+    <div class="mock-head mono">
+      <div class="mock-title"><span>Process a refund</span><small id="run-id">Sample workflow</small></div>
+      <span id="run-state"><i></i><span>Ready</span></span>
+      <button type="button" id="toggle-autoplay" class="auto-toggle" aria-label="Pause autoplay" hidden><span aria-hidden="true"></span></button>
+    </div>
+    <div class="mock-flow">
+      <div class="flow-progress" aria-hidden="true"></div>
+      <svg viewBox="0 0 600 240" preserveAspectRatio="none" class="wires" aria-hidden="true">
+        <g data-wire="check">
+          <path class="wire-track" d="M174 120 H222"/>
+          <path class="wire-packet" pathLength="1" d="M174 120 H222"/>
+        </g>
+        <g data-wire="finance">
+          <path class="wire-track" d="M366 120 C392 120 388 60 420 60"/>
+          <path class="wire-packet" pathLength="1" d="M366 120 C392 120 388 60 420 60"/>
+        </g>
+        <g data-wire="payments">
+          <path class="wire-track" d="M366 120 C392 120 388 180 420 180"/>
+          <path class="wire-packet" pathLength="1" d="M366 120 C392 120 388 180 420 180"/>
+        </g>
+      </svg>
+      <div class="node node-a" data-step="open"><b>Open refund</b><small>Browser trigger</small></div>
+      <div class="node node-b" data-step="check"><b>Check amount</b><small id="node-amount">Read page</small></div>
+      <div class="node node-c" data-step="payments"><b>Log in payments</b><small>Fill form</small></div>
+      <div class="node node-d" data-step="finance"><b>Ask finance</b><small>Request approval</small></div>
+    </div>
+    <div class="run-log mono">
+      <div class="log-heading"><span>RUN LOG</span><span id="run-mode">SIMULATION</span><button type="button" id="approve-run" class="button primary" hidden>Approve this refund</button></div>
+      <ol id="run-log"><li><b>○</b><span>Ready to open a sample refund request</span></li></ol>
+      <span class="sr-only" id="manual-status" role="status"></span>
+    </div>
+  </div>
+</section>
+<div class="wrap steps-strip mono" aria-label="Browser actions"><span>WORKFLOW ACTIONS</span><div><span>↗ &nbsp; Navigate</span><span>⌕ &nbsp; Extract</span><span>▤ &nbsp; Fill form</span><span>↵ &nbsp; Submit</span><span>✓ &nbsp; Request approval</span></div></div>
+<section class="wrap section" id="product">
+  <div class="section-head reveal"><div><span class="pill mono"><i></i> The workflow</span><h2>Most of a process is <em>glue.</em></h2></div><p>Build the steps that move information between browser tabs, business tools, and the people who make the call.</p></div>
+  <article class="feature reveal"><div><h3>One canvas, every branch</h3><p>Start from a trigger, read the page, and choose the next step based on what the browser finds.</p></div><div class="glass feature-card timeline mono" data-chart="1600"><span>REFUND WORKFLOW · SAMPLE RUN</span><div><label>Open request</label><b data-fill data-delay="0.00" style="--value:73%"></b><small data-count="119" data-suffix=" ms" data-delay="0.00">119 ms</small></div><div><label>Read amount</label><b data-fill data-delay="0.09" style="--value:27%"></b><small data-count="44" data-suffix=" ms" data-delay="0.09">44 ms</small></div><div><label>Apply rule</label><b data-fill data-delay="0.18" style="--value:46%"></b><small data-count="76" data-suffix=" ms" data-delay="0.18">76 ms</small></div><div><label>Route request</label><b data-fill data-delay="0.27" style="--value:61%"></b><small data-count="98" data-suffix=" ms" data-delay="0.27">98 ms</small></div></div></article>
+  <article class="feature flipped reveal"><div><h3>Keep people in the loop</h3><p>Pause the workflow when a decision is needed. Resume the run once the approver responds.</p></div><div class="glass feature-card approval"><span class="mono"># FINANCE APPROVALS</span><div class="approval-message"><span class="mark">❯❯</span><div><strong>Runspell</strong><p>A refund for ₹6,400 needs a second look.</p><button class="button primary" type="button" id="approve">Approve sample</button><span id="approval-state" aria-live="polite"></span></div></div></div></article>
+  <article class="feature reveal"><div><h3>See where each run went</h3><p>Follow each action and its timing so you can see exactly where a workflow paused or finished.</p></div><div class="glass feature-card" data-chart="1550"><span class="mono">RUNS PER WEEKDAY · SAMPLE DATA</span><div id="columns" class="columns" aria-label="Sample weekday run volumes"></div></div></article>
+</section>
+<section class="plate-track" id="how" aria-label="How Runspell works">
+<div class="plate-stage"><div class="plate-surface"></div><div class="plate-copy"><span class="mono">FROM TRIGGER TO HANDOFF</span><h2><span>The best</span> <span>workflow is</span><br><span>the one that runs</span> <span><em>itself.</em></span></h2></div><span class="mark plate-mark" aria-hidden="true">❯❯</span></div>
+</section>
+<section class="wrap section">
+  <div class="section-head reveal"><div><span class="pill mono"><i></i> In the browser</span><h2><em>Every step</em> has a place.</h2></div><p>Give each run an explicit route through pages, conditions, and decisions.</p></div>
+  <div class="pair reveal"><article class="glass feature-card"><h3>Pages come together in one run</h3><p>Open a page, read a field, then carry that value into the next form.</p><div class="app-map mono"><span>OPEN</span><i></i><span class="mark">❯❯</span><i></i><span>SUBMIT</span></div></article><article class="glass feature-card timeline" data-chart="1500"><h3>Follow the state of every run</h3><p>See what finished, what is waiting, and what needs a retry.</p><div><label>Finished</label><b data-fill style="--value:86%"></b></div><div><label>Waiting</label><b data-fill data-delay=".09" style="--value:32%"></b></div><div><label>Retry</label><b data-fill data-delay=".18" style="--value:16%"></b></div></article></div>
+</section>
+<section class="wrap section" id="activity">
+  <div class="section-head reveal"><div><span class="pill mono"><i></i> Run activity</span><h2>A <em>Tuesday,</em> seen from Runspell.</h2></div><p>A sample dashboard showing which runs finished and where someone still owes an answer.</p></div>
+  <div class="dashboard reveal">
+    <article class="glass feature-card calendar" data-chart="1700"><span class="mono">THIS WEEK, RUN BY RUN</span><div id="calendar-grid" aria-hidden="true"></div><div class="days mono"> <span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span></div></article>
+    <article class="glass feature-card" data-chart="1450"><span class="mono">HANDS OFF</span><div class="gauge"><span data-count="86" data-suffix="%">86%</span></div><p>Steps completed automatically</p></article>
+    <article class="glass feature-card" data-chart="1500"><span class="mono">WAITING ON PEOPLE</span><div class="people" aria-hidden="true"><span data-fill data-delay=".1">AM</span><span data-fill data-delay=".28">JF</span><span data-fill data-delay=".46">SK</span></div><div class="kpi" data-count="3">3</div><p>Approvals waiting</p></article>
+    <article class="glass feature-card" data-chart="1600"><span class="mono">RECOVERED RUNS</span><svg viewBox="0 0 270 70" aria-hidden="true" class="spark"><path data-fill pathLength="1" d="M0 53 C38 55 56 14 88 14 S144 55 177 54 S230 21 269 18"/></svg><p>Retry activity</p></article>
+    <article class="glass feature-card" data-chart="1550"><span class="mono">COMPLETED RUNS</span><div class="kpi" data-count="1842">1,842</div><p>Across sample workflows</p></article>
+  </div>
+</section>
+<section class="wrap section" id="results">
+  <div class="section-head reveal"><div><span class="pill mono"><i></i> Sample results</span><h2>What changes after <em>the handoff.</em></h2></div><p>Illustrative metrics from the sample workflows.</p></div>
+  <div class="metric-row reveal">
+    <article data-chart="1700"><span class="mono">COMPLETED ACTIONS</span><div class="metric" data-count="6218">6,218</div><svg viewBox="0 0 270 70" aria-hidden="true" class="spark"><path data-fill pathLength="1" d="M0 59 L22 54 L43 56 L65 40 L87 44 L108 37 L130 39 L152 27 L174 32 L195 18 L217 21 L239 10 L269 8"/></svg></article>
+    <article data-chart="1700"><span class="mono">HOURS SAVED</span><div class="metric" data-count="12">12</div><div class="mini-bars" aria-hidden="true"><i data-fill data-delay="0.000" style="--size:95%"></i><i data-fill data-delay="0.039" style="--size:84%"></i><i data-fill data-delay="0.078" style="--size:89%"></i><i data-fill data-delay="0.117" style="--size:69%"></i><i data-fill data-delay="0.156" style="--size:56%"></i><i data-fill data-delay="0.195" style="--size:44%"></i><i data-fill data-delay="0.234" style="--size:27%"></i><i data-fill data-delay="0.273" style="--size:18%"></i></div></article>
+    <article class="timeline" data-chart="1700"><span class="mono">FIRST-ATTEMPT SUCCESS</span><div class="metric" data-count="98" data-suffix="%">98%</div><div class="metric-track" aria-hidden="true"><b data-fill style="--value:98%"></b></div></article>
+  </div>
+</section>
+<section class="wrap section" id="pricing">
+  <div class="section-head reveal"><div><span class="pill mono"><i></i> Usage calculator</span><h2>Plan for the runs you <em>need.</em></h2></div><p>Drag the meter to compare three illustrative tiers.</p></div>
+  <div class="glass pricing reveal"><div><label for="runs">How many browser runs do you expect a month?</label><input id="runs" type="range" min="0" max="2" step="1" value="1"><div class="ticks mono"><span>3,000</span><span>30,000</span><span>300,000</span></div></div><div class="price-result" aria-live="polite"><small class="mono">SAMPLE PLAN</small><strong id="plan">Team</strong><div><b id="price">$89</b> / month</div></div></div>
+  <div class="plans reveal"><article class="glass feature-card" data-plan="0"><h3>Starter</h3><p>3,000 runs a month</p></article><article class="glass feature-card selected" data-plan="1"><h3>Team</h3><p>30,000 runs a month</p></article><article class="glass feature-card" data-plan="2"><h3>Scale</h3><p>300,000 runs a month</p></article></div>
+</section>
+</main>
+<footer class="wrap"><div class="glass footer-brand"><a class="brand" href="#home"><span class="mark">❯❯</span>Runspell</a><p>AI-assisted workflow design for the work between your tools.</p></div><div class="footer-cta"><h2>Pick the task you <em>hate</em> most.</h2><p>Start with a run you can see step by step.</p><a class="button" href="app/#/overview">Open workspace</a></div></footer>
+</body></html>
