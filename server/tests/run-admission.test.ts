@@ -107,6 +107,23 @@ test('mock run admission pins revisions and concurrent workers dispatch each acc
   const { status, draft } = generated.json<{ status: string; draft: { id: string } }>();
   assert.equal(status, 'ready');
   const workflowId = draft.id;
+  const validationPath = `${collection}/${workflowId}/validate`;
+  const validation = await app.inject({
+    method: 'POST', url: validationPath, headers: viewer,
+    payload: { mode: 'validate', expectedRevision: 0 },
+  });
+  assert.equal(validation.statusCode, 200, validation.body);
+  const evidence = validation.json();
+  assert.equal(evidence.evidence, 'validation_only');
+  assert.equal(evidence.externalOutcome, 'not_attempted');
+  assert.ok(evidence.connectionRequirements.some(({ kind }: { kind: string }) => kind === 'browser'));
+  const staleValidation = await app.inject({
+    method: 'POST', url: validationPath, headers: editor,
+    payload: { mode: 'validate', expectedRevision: 1 },
+  });
+  assert.equal(staleValidation.statusCode, 409, staleValidation.body);
+  const noTestRuns = await app.inject({ method: 'GET', url: `${workspacePath(workspaceA)}/runs`, headers: viewer });
+  assert.deepEqual(noTestRuns.json(), { runs: [], nextCursor: null });
   const inactive = await admit(workflowId, 'before-activation');
   assert.equal(inactive.statusCode, 409, inactive.body);
   const emptyId = await createDraft({ ...definition, name: 'Empty draft', nodes: [], edges: [] });

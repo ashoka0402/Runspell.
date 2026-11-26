@@ -55,9 +55,12 @@ try {
     '-f', 'server/migrations/004_mock_run_admission.sql',
     '-f', 'server/migrations/005_mock_dispatch.sql',
     '-f', 'server/migrations/006_identity_lookup.sql',
+    '-f', 'server/migrations/007_scoped_generation_ids.sql',
+    '-f', 'server/migrations/008_connection_records.sql',
     '-f', 'server/tests/workspace-isolation.sql',
   ]);
-  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts', 'server/tests/planner-api.test.ts', 'server/tests/run-admission.test.ts', 'server/tests/run-history.test.ts'], {
+  run(process.execPath, ['--import', 'tsx', '--test', 'server/tests/workflows-api.test.ts', 'server/tests/planner-api.test.ts',
+    'server/tests/run-admission.test.ts', 'server/tests/run-history.test.ts', 'server/tests/connections.test.ts'], {
     ...postgresEnv, RUNSPELL_TEST_PG_PORT: String(port),
   });
 } finally {

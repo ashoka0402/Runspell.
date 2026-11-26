@@ -208,3 +208,127 @@ test('planner persists workspace-scoped drafts and applies only explicitly revie
   assert.equal(quota.statusCode, 429, quota.body);
   assert.equal(calls.length, 10, 'workspace quota is checked before the provider call');
 });
+
+test('client generation IDs recover interrupted requests without another planner call', { timeout: 15_000 }, async (t) => {
+  const port = Number(process.env.RUNSPELL_TEST_PG_PORT);
+  assert.ok(Number.isInteger(port) && port > 0 && port <= 65_535, 'Run through the disposable PostgreSQL test runner');
+  const connection = { host: '127.0.0.1', port, database: 'postgres', max: 1, connectionTimeoutMillis: 3_000 };
+  const admin = new Pool({ ...connection, user: 'runspell_test_admin' });
+  const pool = new Pool({ ...connection, user: 'runspell_test_api' });
+  const actor = randomUUID();
+  const secondActor = randomUUID();
+  const workspace = randomUUID();
+  const otherWorkspace = randomUUID();
+  let start = () => {};
+  let release = () => {};
+  const providerStarted = new Promise<void>((resolve) => { start = resolve; });
+  const paused = new Promise<void>((resolve) => { release = resolve; });
+  let calls = 0;
+  const app = buildDraftApi({
+    pool,
+    allowedOrigins: invoicePolicy.allowedOrigins,
+    authenticate: async (request) => {
+      if (request.headers.authorization === 'Bearer recovery-owner') return actor;
+      if (request.headers.authorization === 'Bearer recovery-editor') return secondActor;
+      return null;
+    },
+    planner: async ({ current }) => {
+      calls++;
+      if (calls === 1) {
+        start();
+        await paused;
+      }
+      const candidate = current ? { ...definition, name: 'Recoverable edit' } : definition;
+      return { output: { status: 'candidate', definition: candidate, assumptions }, usage };
+    },
+  });
+  t.after(async () => {
+    release();
+    try {
+      await app.close();
+    } finally {
+      await Promise.all([pool.end(), admin.end()]);
+    }
+  });
+
+  await admin.query(
+    'INSERT INTO runspell.workspaces (id, name) VALUES ($1, $2), ($3, $4)',
+    [workspace, 'Generation recovery A', otherWorkspace, 'Generation recovery B'],
+  );
+  await admin.query(
+    "INSERT INTO runspell.users (id, identity_issuer, identity_subject) VALUES ($1, 'https://identity.example.test', $2), ($3, 'https://identity.example.test', $4)",
+    [actor, 'generation-recovery-owner', secondActor, 'generation-recovery-editor'],
+  );
+  await admin.query(
+    "INSERT INTO runspell.workspace_members (user_id, workspace_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'owner'), ($4, $2, 'editor')",
+    [actor, workspace, otherWorkspace, secondActor],
+  );
+
+  const workspacePath = (id: string) => `/api/v1/workspaces/${id}`;
+  const owner = { authorization: 'Bearer recovery-owner' };
+  const editor = { authorization: 'Bearer recovery-editor' };
+  const generations = `${workspacePath(workspace)}/ai/generations`;
+  const otherGenerations = `${workspacePath(otherWorkspace)}/ai/generations`;
+  const requestId = randomUUID();
+  const body = { prompt, requestId };
+  const original = app.inject({ method: 'POST', url: generations, headers: owner, payload: body });
+  try {
+    await Promise.race([
+      providerStarted,
+      original.then((response) => assert.fail(`Generation returned before the test provider started: ${response.statusCode} ${response.body}`)),
+    ]);
+    const running = await app.inject({ method: 'GET', url: `${generations}/${requestId}`, headers: owner });
+    assert.equal(running.statusCode, 200, running.body);
+    assert.deepEqual(running.json(), { id: requestId, status: 'running' });
+    const progress = await app.inject({ method: 'GET', url: `${generations}/${requestId}/events`, headers: owner });
+    assert.equal(progress.statusCode, 200, progress.body);
+    assert.deepEqual(eventIds(progress.body), [1]);
+    const duplicate = await app.inject({ method: 'POST', url: generations, headers: owner, payload: body });
+    assert.equal(duplicate.statusCode, 202, duplicate.body);
+    assert.deepEqual(duplicate.json(), running.json());
+    const mismatchedActor = await app.inject({ method: 'POST', url: generations, headers: editor, payload: body });
+    assert.equal(mismatchedActor.statusCode, 409, mismatchedActor.body);
+    const crossWorkspace = await app.inject({ method: 'GET', url: `${otherGenerations}/${requestId}`, headers: owner });
+    assert.equal(crossWorkspace.statusCode, 404, crossWorkspace.body);
+    assert.equal(calls, 1, 'pending retries only read the durable reservation');
+  } finally {
+    release();
+  }
+
+  const created = await original;
+  assert.equal(created.statusCode, 201, created.body);
+  const generation = created.json<Generation>();
+  assert.equal(generation.id, requestId);
+  assert.equal(generation.status, 'ready');
+  assert.ok(generation.draft);
+  const terminal = await app.inject({ method: 'POST', url: generations, headers: owner, payload: body });
+  assert.equal(terminal.statusCode, 200, terminal.body);
+  assert.deepEqual(terminal.json<Generation>(), generation);
+  assert.equal(calls, 1, 'terminal retries replay the stored result');
+
+  const editUrl = `${workspacePath(workspace)}/workflows/${generation.draft.id}/draft/ai-edit`;
+  const edit = { prompt: revisionPrompt, expectedRevision: 0, requestId: randomUUID() };
+  const mismatchedWorkflow = await app.inject({
+    method: 'POST', url: editUrl, headers: owner, payload: { ...edit, requestId },
+  });
+  assert.equal(mismatchedWorkflow.statusCode, 409, mismatchedWorkflow.body);
+  const proposal = await app.inject({ method: 'POST', url: editUrl, headers: owner, payload: edit });
+  assert.equal(proposal.statusCode, 201, proposal.body);
+  assert.equal(proposal.json<Generation>().proposal?.workflowId, generation.draft.id);
+  const replayedProposal = await app.inject({ method: 'POST', url: editUrl, headers: owner, payload: edit });
+  assert.equal(replayedProposal.statusCode, 200, replayedProposal.body);
+  assert.deepEqual(replayedProposal.json(), proposal.json());
+  assert.equal(calls, 2);
+
+  const other = await app.inject({ method: 'POST', url: otherGenerations, headers: owner, payload: body });
+  assert.equal(other.statusCode, 201, other.body);
+  const independent = other.json<Generation>();
+  assert.equal(independent.id, requestId);
+  assert.equal(independent.status, 'ready');
+  assert.equal(independent.draft?.workspaceId, otherWorkspace);
+  assert.notEqual(independent.draft?.id, generation.draft.id);
+  const ownAfter = await app.inject({ method: 'GET', url: `${generations}/${requestId}`, headers: owner });
+  assert.equal(ownAfter.statusCode, 200, ownAfter.body);
+  assert.deepEqual(ownAfter.json(), generation);
+  assert.equal(calls, 3);
+});

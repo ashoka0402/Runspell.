@@ -1,6 +1,6 @@
 # Runspell product and engineering roadmap
 
-Updated 26 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. M2–M5 are in progress. The M0 live provider gate remains pending.
+Updated 27 November 2026. The Runspell rebrand, M0 offline work, and the M1 prototype are verified locally. M2–M5 are in progress. The M0 live provider gate remains pending.
 
 ## 1. Purpose and source documents
 
@@ -229,14 +229,16 @@ For each implemented slice:
 | M4 local manual mock execution | Implemented locally | Explicit activation, immutable version pinning, idempotent acceptance, transactional outbox dispatch, and receipts built from simulated steps |
 | M5 Flight Recorder for mock runs | Implemented locally | Authorized timelines and JSON receipts preserve the pinned version and identify simulated outcomes. The workspace preview opens receipt files locally |
 | M2 identity and M5 run-history APIs | Implemented locally | Configured OIDC token verification, isolated identity lookup, membership discovery, and workspace-scoped run pagination |
-| Remaining M2 and M4–M9 | Planned | Hosted sign-in setup, live activation, connection storage, provider execution, schedules, webhook starts, and launch readiness |
+| M2 connection records and M5 validation mode | Implemented locally | Workspace-scoped pending/revoked metadata and revision-checked draft validation without dispatch |
+| M3 interrupted planning recovery | Implemented locally | Caller-supplied request UUIDs recover durable outcomes and prevent duplicate provider calls during retries |
+| Remaining M2–M9 | Planned | Hosted sign-in, credential attachment and verification, live activation and execution, schedules, webhook starts, and launch readiness |
 
-Local backend verification on 26 November 2026 passed type checking, 35 TypeScript unit tests, PostgreSQL integration for mock execution and signed-identity run history, and a loopback API startup check. The latest frontend verification passed 4 Python checks, 10 Playwright tests, and the build with upstream React Flow and React compiler directive warnings. The live provider gate remains pending.
+Local backend verification on 27 November 2026 passed type checking, 35 TypeScript unit tests, and 6 PostgreSQL integration tests covering mock execution, signed-identity run history, connection metadata, validation, and planning recovery. The previous loopback API startup and frontend checks passed. The live provider gate remains pending.
 
 ## 9. Next work
 
-1. Configure the selected managed identity provider and implement connection storage and live workflow activation.
+1. Configure the selected managed identity provider and implement credential attachment, connection verification, and live workflow activation.
 2. Resume the M0 live spike after approval of the portal, test accounts, and spending limit. Record actual session, cleanup, access, and usage results before closing feasibility.
-3. Qualify M3 with a live synthetic Gemini check and the representative prompt suite. Connect Prompt Studio to authenticated API events and verify recovery when the original generation response is interrupted.
+3. Qualify M3 with a live synthetic Gemini check and the representative prompt suite. Connect Prompt Studio to authenticated API events and use its request UUIDs to resume interrupted responses in the browser.
 4. Continue M4 with live execution prerequisites and verify the chosen portal and API integration after the live provider gate.
 5. Continue M5 by connecting Flight Recorder to authorized run history and verifying the complete prompt-to-receipt flow, controlled tests, and manual failure resolution. Public deployment requires separate authorization.

@@ -6,6 +6,7 @@ import { CompilePolicySchema, compileWorkflow, ContractError, WorkflowSchema, ty
 import { geminiFromEnv, type PlannerProvider, type PlannerResult } from './gemini.js';
 import { buildMockReceipt } from './flight-recorder.js';
 import { withDatabaseRole } from './database.js';
+import { registerConnectionRoutes } from './connections.js';
 import { definitionSchema, plannerInput, plannerOutput, promptSchema, restoreUnchangedValues, revisionSchema } from './planner.js';
 
 const uuid = z.uuid().transform((id) => id.toLowerCase());
@@ -17,11 +18,12 @@ const updateBody = createBody.extend({ expectedRevision: revisionSchema });
 const route = '/api/v1/workspaces/:wid/workflows';
 const generations = '/api/v1/workspaces/:wid/ai/generations';
 const generationPath = workspacePath.extend({ gid: uuid });
-const promptBody = z.strictObject({ prompt: promptSchema });
+const promptBody = z.strictObject({ prompt: promptSchema, requestId: uuid.optional() });
 const editBody = promptBody.extend({ expectedRevision: revisionSchema });
 const applyBody = z.strictObject({ generationId: uuid });
 const mockBody = z.strictObject({ mode: z.literal('mock') });
 const activateBody = mockBody.extend({ expectedRevision: revisionSchema });
+const validateBody = z.strictObject({ expectedRevision: revisionSchema, mode: z.literal('validate') });
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/);
 const runCollection = '/api/v1/workspaces/:wid/runs';
 const runRoute = `${runCollection}/:runId`;
@@ -56,7 +58,7 @@ type Outcome = (
     & ({ draft: Draft } | { proposal: Proposal }) |
   { status: 'clarification' | 'unsupported' | 'failed'; message: string }
 ) & { usage?: PlannerResult['usage'] };
-type GenerationRow = { result: Outcome | null; expired: boolean; workflowId: string | null };
+type GenerationRow = { result: Outcome | null; expired: boolean; workflowId: string | null; requestedBy: string };
 type Options = {
   pool: Pool;
   authenticate: (request: FastifyRequest) => Promise<string | null>;
@@ -153,6 +155,17 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
     return result.rows[0] ?? workflowNotFound();
   }
 
+  function compileStoredDraft(draft: Draft) {
+    const { id: storedId, workspaceId: storedWorkspace, ...definition } =
+      parse(WorkflowSchema, draft.definition, 422, 'INVALID_DEFINITION');
+    const compiled = validateDefinition(definition, draft.workspaceId, draft.id);
+    const { workflow } = compiled;
+    if (!workflow.nodes.length || storedId !== workflow.id || storedWorkspace !== workflow.workspaceId) {
+      throw new ApiError(422, 'INVALID_DEFINITION');
+    }
+    return compiled;
+  }
+
   async function insertDraft(client: PoolClient, workspaceId: string, id: string, workflow: Workflow) {
     const result = await client.query<Draft>(
       `INSERT INTO runspell.workflows (id, workspace_id, name, draft_definition)
@@ -239,18 +252,26 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
       const { expectedRevision } = parse(activateBody, request.body, 422, 'INVALID_ACTIVATION');
       const draft = await readDraft(client, wid, id);
       if (expectedRevision !== draft.revision) throw new ApiError(409, 'REVISION_CONFLICT');
-      const { id: storedId, workspaceId: storedWorkspace, ...definition } =
-        parse(WorkflowSchema, draft.definition, 422, 'INVALID_DEFINITION');
-      const { workflow } = validateDefinition(definition, wid, id);
-      if (!workflow.nodes.length || storedId !== workflow.id || storedWorkspace !== workflow.workspaceId) {
-        throw new ApiError(422, 'INVALID_DEFINITION');
-      }
+      compileStoredDraft(draft);
       const result = await client.query<MockVersion>(
         `SELECT id, version_number AS "versionNumber", draft_revision AS "draftRevision"
          FROM runspell.activate_mock_workflow($1, $2, $3, $4)`, [wid, id, expectedRevision, draft.definition],
       );
       if (!result.rows[0]) throw new ApiError(409, 'REVISION_CONFLICT');
       return { ...result.rows[0], mode: 'mock' };
+    });
+  });
+
+  app.post(`${route}/:id/validate`, async (request, reply) => {
+    const { wid, id } = parse(workflowPath, request.params, 400, 'INVALID_PATH');
+    reply.header('Cache-Control', 'private, no-store');
+    return inWorkspace(request, wid, false, async (client) => {
+      const { expectedRevision } = parse(validateBody, request.body, 422, 'INVALID_TEST_MODE');
+      const draft = await readDraft(client, wid, id);
+      if (expectedRevision !== draft.revision) throw new ApiError(409, 'REVISION_CONFLICT');
+      const { connectionRequirements } = compileStoredDraft(draft);
+      return { mode: 'validate', status: 'validated', revision: draft.revision, evidence: 'validation_only',
+        externalOutcome: 'not_attempted', connectionRequirements };
     });
   });
 
@@ -323,28 +344,47 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
 
   const expiredOutcome = { status: 'failed', message: 'Generation expired before it finished.' } as const;
 
-  async function readGeneration(client: PoolClient, workspaceId: string, id: string) {
+  async function findGeneration(client: PoolClient, workspaceId: string, id: string) {
     const result = await client.query<GenerationRow>(
-      `SELECT result, workflow_id AS "workflowId", created_at <= now() - ${generationWindow} AS expired
+      `SELECT result, requested_by AS "requestedBy", workflow_id AS "workflowId",
+        created_at <= now() - ${generationWindow} AS expired
        FROM runspell.ai_generations WHERE workspace_id = $1 AND id = $2`, [workspaceId, id],
     );
-    if (!result.rows[0]) throw new ApiError(404, 'GENERATION_NOT_FOUND');
     return result.rows[0];
   }
 
+  async function readGeneration(client: PoolClient, workspaceId: string, id: string) {
+    const generation = await findGeneration(client, workspaceId, id);
+    if (!generation) throw new ApiError(404, 'GENERATION_NOT_FOUND');
+    return generation;
+  }
+
+  function generationState({ result, expired }: GenerationRow) {
+    return result ?? (expired ? expiredOutcome : { status: 'running' as const });
+  }
+
   async function generate(request: FastifyRequest, wid: string, workflowId?: string) {
-    const id = randomUUID();
-    const { prompt, current } = await inWorkspace(request, wid, true, async (client, actor) => {
-      if (!planner) throw new ApiError(503, 'PLANNER_DISABLED');
+    const reservation = await inWorkspace(request, wid, true, async (client, actor) => {
       const body = workflowId
         ? parse(editBody, request.body, 422, 'INVALID_PROMPT')
         : parse(promptBody, request.body, 422, 'INVALID_PROMPT');
+
+      // Serialize reservations and retries across API instances. Provider work happens after commit.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [wid]);
+      const id = body.requestId ?? randomUUID();
+      const existing = body.requestId ? await findGeneration(client, wid, id) : undefined;
+      if (existing) {
+        if (existing.requestedBy !== actor || existing.workflowId !== (workflowId ?? null)) {
+          throw new ApiError(409, 'GENERATION_ID_CONFLICT');
+        }
+        return { kind: 'replay' as const, id, state: generationState(existing) };
+      }
+
+      if (!planner) throw new ApiError(503, 'PLANNER_DISABLED');
       const current = workflowId ? await readDraft(client, wid, workflowId) : undefined;
       if (current && 'expectedRevision' in body && current.revision !== body.expectedRevision) {
         throw new ApiError(409, 'REVISION_CONFLICT');
       }
-      // Serialize quota reservations across API instances without holding a lock during model calls.
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [wid]);
       const quota = await client.query<{ blocked: boolean }>(
         `SELECT count(*) >= 10 OR coalesce(bool_or(result IS NULL AND created_at > now() - ${generationWindow}), false) AS blocked
          FROM runspell.ai_generations WHERE workspace_id = $1 AND created_at > now() - interval '24 hours'`, [wid],
@@ -354,8 +394,12 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
         'INSERT INTO runspell.ai_generations (id, workspace_id, requested_by, workflow_id) VALUES ($1, $2, $3, $4)',
         [id, wid, actor, workflowId ?? null],
       );
-      return { prompt: body.prompt, current };
+      return { kind: 'new' as const, id, prompt: body.prompt, current };
     });
+    if (reservation.kind === 'replay') {
+      return { statusCode: reservation.state.status === 'running' ? 202 : 200, body: { id: reservation.id, ...reservation.state } };
+    }
+    const { id, prompt, current } = reservation;
 
     let answer: z.infer<typeof plannerOutput> | undefined;
     let usage: PlannerResult['usage'];
@@ -379,7 +423,7 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
       }
     }
 
-    return inWorkspace(request, wid, true, async (client) => {
+    const body = await inWorkspace(request, wid, true, async (client) => {
       let outcome: Outcome;
       if (answer?.status === 'candidate' && candidate) {
         const { workflow, connectionRequirements } = candidate;
@@ -399,22 +443,25 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
       if (!updated.rowCount) throw new ApiError(409, 'GENERATION_EXPIRED');
       return { id, ...outcome };
     });
+    return { statusCode: 201, body };
   }
 
   app.post(generations, async (request, reply) => {
     const { wid } = parse(workspacePath, request.params, 400, 'INVALID_PATH');
-    return reply.code(201).send(await generate(request, wid));
+    const result = await generate(request, wid);
+    return reply.header('Cache-Control', 'private, no-store').code(result.statusCode).send(result.body);
   });
   app.post(`${route}/:id/draft/ai-edit`, async (request, reply) => {
     const { wid, id } = parse(workflowPath, request.params, 400, 'INVALID_PATH');
-    return reply.code(201).send(await generate(request, wid, id));
+    const result = await generate(request, wid, id);
+    return reply.header('Cache-Control', 'private, no-store').code(result.statusCode).send(result.body);
   });
-  app.get(`${generations}/:gid`, async (request) => {
+  app.get(`${generations}/:gid`, async (request, reply) => {
     const { wid, gid } = parse(generationPath, request.params, 400, 'INVALID_PATH');
-    return inWorkspace(request, wid, false, async (client) => {
-      const { result, expired } = await readGeneration(client, wid, gid);
-      return { id: gid, ...(result ?? (expired ? expiredOutcome : { status: 'running' })) };
-    });
+    reply.header('Cache-Control', 'private, no-store');
+    return inWorkspace(request, wid, false, async (client) => ({
+      id: gid, ...generationState(await readGeneration(client, wid, gid)),
+    }));
   });
   app.get(`${generations}/:gid/events`, async (request, reply) => {
     const { wid, gid } = parse(generationPath, request.params, 400, 'INVALID_PATH');
@@ -425,7 +472,7 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
     const stream = events.filter(({ id }) => id > Number(cursor)).map(({ id, state }) =>
       `id: ${id}\nevent: generation.${state.status}\ndata: ${JSON.stringify({ id: gid, ...state })}\n\n`,
     ).join('');
-    return reply.header('Cache-Control', 'no-store').type('text/event-stream').send(stream);
+    return reply.header('Cache-Control', 'private, no-store').type('text/event-stream').send(stream);
   });
   app.post(`${route}/:id/draft/apply-patch`, async (request) => {
     const { wid, id } = parse(workflowPath, request.params, 400, 'INVALID_PATH');
@@ -440,5 +487,6 @@ export function buildDraftApi({ pool, authenticate, allowedOrigins, planner = ge
     });
   });
 
+  registerConnectionRoutes(app, inWorkspace, policy.allowedOrigins);
   return app;
 }
