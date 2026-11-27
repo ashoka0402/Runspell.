@@ -105,7 +105,7 @@ test('cancelled and interrupted builds preserve accepted edits across refresh, r
 
   await page.getByRole('link', { name: 'Overview', exact: true }).click();
   await expect(page.locator('#studio-host')).toHaveCount(0);
-  await page.getByRole('link', { name: 'Prompt Studio', exact: true }).click();
+  await page.goBack();
   await expect(page.locator('.react-flow__node')).toHaveCount(6);
   await page.getByRole('button', { name: 'Build mock draft', exact: true }).click();
   await page.getByRole('button', { name: 'Replace and build mock', exact: true }).click();

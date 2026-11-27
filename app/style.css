@@ -150,14 +150,21 @@ body{font-size:14.5px;line-height:1.4;transition:background-color .55s ease,colo
 #m0-canvas-host { display: block; min-width: 0; }
 @media (max-width: 700px) { .m0-link { padding: 8px; font-size: 12px; } }
 
-.studio-link { text-decoration: none; white-space: nowrap; }
 #studio-host { display: block; min-width: 0; }
 #studio-mount-status:empty { display: none; }
 @media (max-width: 700px) {
   .top-actions .m0-link { display: none; }
-  .studio-link { padding: 8px; font-size: 12px; }
   .topbar { gap: 8px; }
 }
-@media (max-width: 400px) {
-  .studio-link { max-width: 80px; white-space: normal; line-height: 1.1; text-align: center; }
-}
+.dashboard-menu { right: auto; max-height: calc(100dvh - 16px); overflow: auto; }
+.dashboard-menu-title { display: block; padding: 6px 10px; }
+.dashboard-search { max-height: calc(100dvh - 32px); overflow: auto; }
+#dashboard-search-results { margin-top: 12px; }
+#dashboard-search-results h3 { margin: 12px 0 4px; font-size: 13px; }
+#dashboard-search-results .whitebtn { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
+.darkmode .modal { background: var(--card); }
+.compact-tables .table-wrap th, .compact-tables .table-wrap td { padding-block: 8px; }
+.rail.expanded { width: 162px; align-items: flex-start; }
+.rail.expanded .navitem, .rail.expanded .rail-pill { width: 140px; }
+.rail.expanded .navitem { display: flex; justify-content: flex-start; gap: 10px; padding-inline: 12px; }
+.rail.expanded .navitem::after { content: attr(data-label); font-size: 13px; }
