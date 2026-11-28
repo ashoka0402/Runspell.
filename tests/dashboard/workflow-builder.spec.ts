@@ -31,7 +31,7 @@ test('the three persistent trigger options can independently start the same work
   await expect(webhook).toHaveAttribute('aria-pressed', 'true');
   await expect(schedule).toHaveAttribute('aria-pressed', 'true');
   await expect(nodes).toHaveCount(2);
-  await expect(builder.locator('.workflow-links line')).toHaveCount(0);
+  await expect(builder.locator('.workflow-edge')).toHaveCount(0);
   await schedule.click();
   await expect(schedule).toHaveAttribute('aria-pressed', 'false');
   await expect(nodes).toHaveCount(1);
@@ -39,7 +39,7 @@ test('the three persistent trigger options can independently start the same work
 
   await options.locator('[data-app="Helpdesk"]').click();
   await expect(nodes).toHaveCount(3);
-  const links = builder.locator('.workflow-links line');
+  const links = builder.locator('.workflow-edge');
   await expect(links).toHaveCount(2);
   await expect(links.nth(0)).toHaveAttribute('data-from', '0');
   await expect(links.nth(1)).toHaveAttribute('data-from', '1');
@@ -109,6 +109,63 @@ test('blank workflows show modules and support moving, saving and deleting nodes
   await expect(builder.getByRole('button', { name: 'Preview run' })).toBeDisabled();
 });
 
+test('directional connections follow moved nodes and reconnect when a configured node is deleted', async ({ page }) => {
+  const builder = await openBlankScenario(page);
+  const modules = builder.locator('.workflow-choices');
+  const nodes = builder.locator('[data-workflow-move]');
+  const links = builder.locator('.workflow-edge');
+  await modules.locator('[data-app="Webhook"]').click();
+  await modules.locator('[data-app="Helpdesk"]').click();
+  await modules.locator('[data-app="Mail"]').click();
+
+  const incoming = builder.locator('.workflow-edge[data-from="0"][data-to="1"]');
+  const outgoing = builder.locator('.workflow-edge[data-from="1"][data-to="2"]');
+  await expect(links).toHaveCount(2);
+  await expect(incoming).toHaveAttribute('marker-end', 'url(#workflow-arrow)');
+  await expect(outgoing).toHaveAttribute('marker-end', 'url(#workflow-arrow)');
+  await expect(incoming).toHaveAttribute('d', /^M.+C/);
+  expect(await incoming.evaluate(element => {
+    const path = element as SVGPathElement;
+    return path.getPointAtLength(0).x < path.getPointAtLength(path.getTotalLength()).x;
+  })).toBe(true);
+  const pulse = builder.locator('.workflow-edge-pulse').first();
+  await expect(pulse).toHaveAttribute('pathLength', '100');
+  await expect(pulse).toHaveAttribute('d', (await links.first().getAttribute('d'))!);
+  await expect(pulse).not.toHaveCSS('animation-name', 'none');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(pulse).toHaveCSS('animation-name', 'none');
+
+  const initialIncoming = await incoming.getAttribute('d');
+  const initialOutgoing = await outgoing.getAttribute('d');
+  const helpdesk = nodes.filter({ hasText: 'Helpdesk' });
+  await helpdesk.scrollIntoViewIfNeeded();
+  const bounds = (await helpdesk.boundingBox())!;
+  const x = bounds.x + bounds.width / 2;
+  const y = bounds.y + bounds.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 24, y + 96, { steps: 8 });
+  await page.mouse.up();
+  await expect(incoming).not.toHaveAttribute('d', initialIncoming!);
+  await expect(outgoing).not.toHaveAttribute('d', initialOutgoing!);
+
+  await helpdesk.click();
+  const settings = builder.getByRole('region', { name: 'Module settings' });
+  await settings.getByLabel('Ticket title').fill('Review the new request');
+  await settings.getByLabel('Priority').selectOption({ label: 'High' });
+  await settings.getByRole('button', { name: 'Done' }).click();
+  await builder.getByRole('button', { name: 'Save draft' }).click();
+  await reopenSavedScenario(page);
+  await helpdesk.click();
+  await expect(settings.getByLabel('Ticket title')).toHaveValue('Review the new request');
+  await expect(settings.getByLabel('Priority').locator('option:checked')).toHaveText('High');
+  await settings.getByRole('button', { name: 'Delete node' }).click();
+  await expect(nodes).toContainText(['Webhook', 'Mail']);
+  await expect(links).toHaveCount(1);
+  await expect(incoming).toHaveAttribute('marker-end', 'url(#workflow-arrow)');
+  await expect(outgoing).toHaveCount(0);
+});
+
 test('left-side chat builds in the canvas, retains history and confirms replacement', async ({ page }) => {
   const builder = await openBlankScenario(page);
   const nodes = builder.locator('.workflow-node[data-workflow-move]');
@@ -122,6 +179,7 @@ test('left-side chat builds in the canvas, retains history and confirms replacem
   const promptBounds = (await builder.locator('.workflow-prompt').boundingBox())!;
   const optionsBounds = (await builder.locator('.workflow-panel').boundingBox())!;
   expect(promptBounds.width).toBe(optionsBounds.width);
+  expect(boardBounds.width).toBeGreaterThan((promptBounds.width + boardBounds.width + optionsBounds.width) * 0.65);
   expect(promptBounds.x + promptBounds.width).toBeLessThanOrEqual(boardBounds.x + 1);
   expect(boardBounds.x + boardBounds.width).toBeLessThanOrEqual(optionsBounds.x + 1);
   expect(composerBounds.y).toBeGreaterThanOrEqual(threadBounds.y + threadBounds.height - 1);

@@ -11,6 +11,24 @@ const workflowActions = {
   SMS: 'Send a text', 'AI writer': 'Draft a message', 'Cloud files': 'Save a file',
   Helpdesk: 'Create a ticket', Ledger: 'Add an entry',
 };
+const workflowSettings = {
+  'trigger:Storefront': [['status','Order status',['Any','Paid','Pending']]],
+  'trigger:Schedule': [['frequency','Frequency',['Daily','Weekly','Monthly']],['time','Run time','time']],
+  'trigger:Webhook': [['event','Event name','text','customer.created']],
+  Storefront: [['order','Order ID','text','DEMO-1042']],
+  Mail: [['recipient','Recipient','email','demo@example.com'],['subject','Subject','text']],
+  Sheets: [['sheet','Sheet name','text','Orders'],['row','Row values','textarea']],
+  Payments: [['payment','Payment reference','text']],
+  Filter: [['field','Field to check','text'],['expected','Expected value','text']],
+  'Team chat': [['channel','Channel','text'],['message','Message','textarea']],
+  Courier: [['tracking','Tracking number','text']],
+  CRM: [['contact','Contact ID','text']],
+  SMS: [['recipient','Phone number','tel'],['message','Message','textarea']],
+  'AI writer': [['prompt','Writing prompt','textarea']],
+  'Cloud files': [['filename','File name','text'],['folder','Destination folder','text']],
+  Helpdesk: [['title','Ticket title','text'],['priority','Priority',['Normal','Low','High']]],
+  Ledger: [['reference','Entry reference','text'],['amount','Amount','number']],
+};
 let workflow;
 let workflowKey;
 let workflowPanel;
@@ -97,7 +115,8 @@ function closeWorkflow() {
 
 function workflowStep(step, index) {
   const trigger = step.kind === 'trigger';
-  return `<button class="workflow-node" data-workflow-move data-action="workflow-edit" data-index="${index}" style="--node-x:${Number(step.x) || 0}px;--node-y:${Number(step.y) || 0}px">
+  const selected = workflowPanel?.mode === 'edit' && workflowPanel.index === index;
+  return `<button class="workflow-node" data-workflow-move data-action="workflow-edit" data-index="${index}" aria-pressed="${selected}" aria-keyshortcuts="Delete" style="--node-x:${Number(step.x) || 0}px;--node-y:${Number(step.y) || 0}px">
     <span class="workflow-symbol ${trigger ? 'workflow-trigger' : ''}">${escapeHTML(step.symbol)}</span>
     <span class="workflow-step-text"><small>${trigger ? 'Trigger' : 'Action'}</small>
     <strong>${escapeHTML(step.app)}</strong><span>${escapeHTML(step.label)}</span></span>
@@ -106,6 +125,22 @@ function workflowStep(step, index) {
 }
 
 const selectableWorkflowTriggers = workflowTriggers.filter(([app]) => app !== 'Manual');
+
+function workflowStepFields(step) {
+  const key = step.kind === 'trigger' ? `trigger:${step.app}` : step.app;
+  return Object.hasOwn(workflowSettings,key) ? workflowSettings[key] : [];
+}
+
+function workflowSettingFields(step) {
+  return workflowStepFields(step).map(([key,label,type,placeholder='']) => {
+    const value = step.settings?.[key] || '';
+    const name = `name="${key}"`;
+    const field = Array.isArray(type) ? `<select ${name}>${type.map(option=>`<option${option === value ? ' selected' : ''}>${option}</option>`).join('')}</select>`
+      : type === 'textarea' ? `<textarea ${name} rows="3" maxlength="500">${escapeHTML(value)}</textarea>`
+      : `<input ${name} type="${type}" value="${escapeHTML(value)}" placeholder="${placeholder}" maxlength="160"${type==='number'?' step="any"':''}>`;
+    return `<label class="workflow-field">${label}${field}</label>`;
+  }).join('');
+}
 
 function workflowSidePanel() {
   const actions = apps.filter(([name]) => Object.hasOwn(workflowActions, name))
@@ -126,8 +161,12 @@ function workflowSidePanel() {
   </section>`;
   else if (editing) inspector = `<section class="workflow-inspector" aria-label="Module settings">
     <div class="workflow-panel-title"><h3>${escapeHTML(step.app)}</h3><button class="workflow-icon-button" data-action="workflow-panel-close" aria-label="Close module settings">${ic('close')}</button></div>
-    <label class="workflow-field">Step name<input id="workflow-step-name" value="${escapeHTML(step.label)}"></label>
-    <button class="blackbtn" data-action="workflow-step-save">Done</button>
+    <form id="workflow-step-form">
+      <label class="workflow-field">Step name<input name="label" required maxlength="100" value="${escapeHTML(step.label)}"></label>
+      ${workflowSettingFields(step)}
+      <p class="workflow-node-config">Settings are saved with this draft. Preview uses sample data.</p>
+      <button class="blackbtn" type="submit">Done</button>
+    </form>
     ${step.kind === 'action' ? `<button class="whitebtn" data-action="workflow-replace">Change module</button>
       <div class="workflow-edit-actions">
         <button class="whitebtn" data-action="workflow-earlier" ${workflowPanel.index === workflowTriggerCount() ? 'disabled' : ''}>← Move earlier</button>
@@ -197,6 +236,11 @@ document.addEventListener('input', event => {
 });
 
 document.addEventListener('submit', event => {
+  if (event.target.id === 'workflow-step-form') {
+    event.preventDefault();
+    workflowAction('workflow-step-save');
+    return;
+  }
   if (event.target.id !== 'workflow-prompt-form') return;
   event.preventDefault();
   const text = workflowPrompt.trim();
@@ -212,6 +256,25 @@ document.addEventListener('submit', event => {
   builder();
   ($('[data-action="workflow-prompt-apply"]') || $('#workflow-prompt')).focus({preventScroll:true});
 });
+
+function saveWorkflowStep() {
+  const form = $('#workflow-step-form');
+  if (!form) return true;
+  const name = form.elements.namedItem('label');
+  name.value = name.value.trim();
+  if (!form.reportValidity()) return false;
+  const step = workflow.steps[workflowPanel.index];
+  const values = new FormData(form);
+  const settings = Object.fromEntries(workflowStepFields(step).map(([key])=>[key,String(values.get(key) || '').trim()]));
+  if (name.value !== step.label || JSON.stringify(settings) !== JSON.stringify(step.settings || {})) {
+    recordStepChange();
+    step.label = name.value;
+    step.settings = settings;
+    $('[data-action="workflow-undo"]').disabled = false;
+    $('[data-action="workflow-redo"]').disabled = true;
+  }
+  return true;
+}
 
 function builder(scrollToEnd = false) {
   const entering = !$('#builder');
@@ -361,11 +424,7 @@ function workflowAction(action, el) {
       return;
     }
     case 'workflow-step-save': {
-      const label = $('#workflow-step-name').value.trim();
-      if (label && label !== workflow.steps[index].label) {
-        recordStepChange();
-        workflow.steps[index].label = label;
-      }
+      if (!saveWorkflowStep()) return;
       workflowPanel = null;
       break;
     }
@@ -402,6 +461,7 @@ function workflowAction(action, el) {
       break;
     }
     case 'workflow-save':
+      if (!saveWorkflowStep()) return;
       workflow.name = workflow.name.trim() || 'Untitled scenario';
       $('#workflow-name').value = workflow.name;
       workflowDrafts[workflowKey] = structuredClone({...workflow,chat:workflowChat});
@@ -449,34 +509,62 @@ function moveWorkflowAction(from, to) {
   return true;
 }
 
+function workflowEdgePath(source, target, origin) {
+  const dx = target.left + target.width / 2 - source.left - source.width / 2;
+  const dy = target.top + target.height / 2 - source.top - source.height / 2;
+  const horizontalGap = Math.abs(dx) - (source.width + target.width) / 2;
+  const verticalGap = Math.abs(dy) - (source.height + target.height) / 2;
+  const overlap = horizontalGap < 0 && verticalGap < 0;
+  const horizontal = overlap || (horizontalGap >= 0 && (verticalGap < 0 || Math.abs(dx) >= Math.abs(dy)));
+  const toward = (horizontal ? dx : dy) < 0 ? -1 : 1;
+  const arrival = overlap ? toward : -toward;
+  const x1 = source.left + source.width / 2 - origin.left + (horizontal ? toward * source.width / 2 : 0);
+  const y1 = source.top + source.height / 2 - origin.top + (horizontal ? (overlap ? -14 : 0) : toward * source.height / 2);
+  const x2 = target.left + target.width / 2 - origin.left + (horizontal ? arrival * target.width / 2 : 0);
+  const y2 = target.top + target.height / 2 - origin.top + (horizontal ? (overlap ? 14 : 0) : arrival * target.height / 2);
+  const bend = Math.max(24, Math.min(118, (horizontal ? Math.abs(x2-x1) : Math.abs(y2-y1)) * 0.56));
+  const c1x = x1 + (horizontal ? toward * bend : 0), c1y = y1 + (horizontal ? 0 : toward * bend);
+  const c2x = x2 + (horizontal ? arrival * bend : 0), c2y = y2 + (horizontal ? 0 : arrival * bend);
+  return `M ${x1} ${y1} C ${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}`;
+}
+
 function drawWorkflowLinks() {
   const links = document.querySelector('.workflow-links');
   if (!links) return;
+  const layer = links.querySelector('g');
   const origin = links.getBoundingClientRect();
   const nodes = $$('.workflow-node[data-workflow-move]').map(node => node.getBoundingClientRect());
   const triggerCount = workflowTriggerCount();
-  const edges = nodes.slice(triggerCount + 1).map((_,index)=>[triggerCount + index,triggerCount + index + 1]);
+  const edges = [];
   if (nodes[triggerCount]) {
     for (let index = 0; index < triggerCount; index++) edges.push([index,triggerCount]);
+    for (let index = triggerCount + 1; index < nodes.length; index++) edges.push([index-1,index]);
   }
-  links.querySelector('g').innerHTML = edges.map(([from,to]) => {
-    const previous = nodes[from], next = nodes[to];
-    const x1 = previous.left + previous.width / 2;
-    const y1 = previous.top + previous.height / 2;
-    const x2 = next.left + next.width / 2;
-    const y2 = next.top + next.height / 2;
-    const dx = x2 - x1, dy = y2 - y1;
-    const start = Math.min(previous.width / 2 / Math.abs(dx), previous.height / 2 / Math.abs(dy));
-    const end = Math.min(next.width / 2 / Math.abs(dx), next.height / 2 / Math.abs(dy));
-    if (start + end >= 1) return '';
-    return `<line data-from="${from}" data-to="${to}" x1="${x1 + dx * start - origin.left}" y1="${y1 + dy * start - origin.top}" x2="${x2 - dx * end - origin.left}" y2="${y2 - dy * end - origin.top}" marker-end="url(#workflow-arrow)"/>`;
-  }).join('');
+  const signature = edges.join(';');
+  if (layer.dataset.edges !== signature) {
+    layer.dataset.edges = signature;
+    layer.innerHTML = edges.map(([from,to])=>`<g class="workflow-edge-group">
+      <path class="workflow-edge" data-from="${from}" data-to="${to}" marker-end="url(#workflow-arrow)"/>
+      <path class="workflow-edge-pulse" pathLength="100"/>
+    </g>`).join('');
+  }
+  edges.forEach(([from,to],index)=>{
+    const group = layer.children[index];
+    const receivingStep = to - triggerCount + 1;
+    const inactive = (from < triggerCount && from !== previewTrigger) || previewIndex < receivingStep;
+    group.dataset.flow = previewIndex === null ? 'idle' : inactive ? 'inactive' : previewIndex === receivingStep ? 'active' : 'complete';
+    const path = workflowEdgePath(nodes[from],nodes[to],origin);
+    for (const stroke of group.children) stroke.setAttribute('d',path);
+  });
 }
 
 let workflowDrag;
 let draggedNodeClick;
 function clearWorkflowDrag() {
-  workflowDrag?.node.classList.remove('workflow-node-moving');
+  if (workflowDrag) {
+    cancelAnimationFrame(workflowDrag.frame);
+    workflowDrag.node.classList.remove('workflow-node-moving');
+  }
   workflowDrag = undefined;
 }
 
@@ -501,22 +589,45 @@ document.addEventListener('pointerdown', event => {
   const step = workflow.steps[Number(node.dataset.index)];
   const canvas = node.closest('.workflow-center');
   const bounds = canvas.getBoundingClientRect();
-  workflowDrag = {node, canvas, pointer:event.pointerId, left:event.clientX-bounds.left, top:event.clientY-bounds.top, x:Number(step.x)||0, y:Number(step.y)||0, moved:false};
+  workflowDrag = {
+    node, canvas, viewport:canvas.parentElement, pointer:event.pointerId,
+    startX:event.clientX-bounds.left, startY:event.clientY-bounds.top,
+    x:Number(step.x)||0, y:Number(step.y)||0, moved:false,
+  };
   node.setPointerCapture(event.pointerId);
 });
 
-document.addEventListener('pointermove', event => {
+function panWorkflowDuringDrag() {
   const drag = workflowDrag;
-  if (!drag || drag.pointer !== event.pointerId) return;
+  if (!drag?.moved) return;
+  const viewport = drag.viewport;
+  const rect = viewport.getBoundingClientRect();
+  const edgeSpeed = (pointer,start,end) => pointer < start + 30 ? -8 : pointer > end - 30 ? 8 : 0;
+  const left = viewport.scrollLeft, top = viewport.scrollTop;
+  viewport.scrollBy(edgeSpeed(drag.clientX,rect.left,rect.right),edgeSpeed(drag.clientY,rect.top,rect.bottom));
+  if (viewport.scrollLeft !== left || viewport.scrollTop !== top) updateWorkflowDragPosition(drag);
+  drag.frame = requestAnimationFrame(panWorkflowDuringDrag);
+}
+
+function updateWorkflowDragPosition(drag) {
   const bounds = drag.canvas.getBoundingClientRect();
-  const dx = event.clientX - bounds.left - drag.left, dy = event.clientY - bounds.top - drag.top;
+  const dx = drag.clientX - bounds.left - drag.startX, dy = drag.clientY - bounds.top - drag.startY;
   if (!drag.moved) {
     if (Math.hypot(dx,dy) < 5) return;
     recordStepChange();
     drag.moved = true;
     drag.node.classList.add('workflow-node-moving');
+    drag.frame = requestAnimationFrame(panWorkflowDuringDrag);
   }
   setWorkflowNodeOffset(drag.node, drag.x + dx / state.zoom, drag.y + dy / state.zoom);
+}
+
+document.addEventListener('pointermove', event => {
+  const drag = workflowDrag;
+  if (!drag || drag.pointer !== event.pointerId) return;
+  drag.clientX = event.clientX;
+  drag.clientY = event.clientY;
+  updateWorkflowDragPosition(drag);
 });
 
 function finishWorkflowDrag(event) {
@@ -568,11 +679,12 @@ window.addEventListener('resize', drawWorkflowLinks);
 
 function workflowRunPanel() {
   const [trigger, ...actions] = workflowPreviewSteps();
+  const settings = trigger.settings || {};
   const input = {
     Manual: { event: 'manual.start' },
-    Storefront: { event: 'order.created', orderId: 'DEMO-1042' },
-    Schedule: { event: 'schedule.tick', interval: 'daily' },
-    Webhook: { event: 'webhook.received', requestId: 'demo-001' },
+    Storefront: { event: 'order.created', orderId: 'DEMO-1042', status: settings.status || 'Any' },
+    Schedule: { event: 'schedule.tick', interval: (settings.frequency || 'Daily').toLowerCase(), time: settings.time || '09:00' },
+    Webhook: { event: settings.event || 'webhook.received', requestId: 'demo-001' },
   }[trigger.app];
   return `<section class="workflow-inspector workflow-run" aria-label="Run inspector">
     <div class="workflow-panel-title"><h3>Run inspector</h3>
@@ -611,6 +723,7 @@ function startWorkflowPreview(trigger) {
       nodes[index].classList.toggle('workflow-running', status === 'running');
       nodes[index].classList.toggle('workflow-completed', status === 'done');
     });
+    drawWorkflowLinks();
     if (!workflowDrag) nodes[previewIndex]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     rows[previewIndex]?.scrollIntoView({ block: 'nearest' });
     if (!finished) workflowPreview = setTimeout(() => { previewIndex++; paint(); }, 620);
